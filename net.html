@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WizardBall connection test</title>
+  <style>
+    body { margin: 16px; background: #111; color: #ddd; font: 14px monospace; max-width: 720px; }
+    h2 { margin: 20px 0 6px; }
+    textarea { display: block; width: 100%; height: 70px; background: #000; color: #8f8; border: 1px solid #555; font: 11px monospace; box-sizing: border-box; margin: 6px 0; }
+    button { font: inherit; padding: 4px 10px; background: #222; color: #ddd; border: 1px solid #555; cursor: pointer; }
+    #status { margin-top: 20px; padding: 10px; border: 1px solid #555; }
+    .ok { color: #8f8; }
+  </style>
+</head>
+<body>
+  <p>Open this page in two windows (or on two computers). One person hosts, the other joins.</p>
+
+  <h2>Host</h2>
+  <button id="make-offer">1. Create connection code</button>
+  <textarea id="offer" aria-label="Host connection code" readonly placeholder="send this to the guest"></textarea>
+  <textarea id="answer-in" aria-label="Guest reply code" placeholder="3. paste the guest's reply here"></textarea>
+  <button id="accept">4. Connect</button>
+
+  <h2>Guest</h2>
+  <textarea id="offer-in" aria-label="Host connection code" placeholder="2. paste the host's code here"></textarea>
+  <button id="make-answer">Create reply code</button>
+  <textarea id="answer" aria-label="Guest reply code" readonly placeholder="send this back to the host"></textarea>
+
+  <div id="status">Not connected.</div>
+
+  <script src="net.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const link = createLink();
+    const say = (html) => { $('status').innerHTML = html; };
+
+    $('make-offer').onclick = async () => { $('offer').value = await link.host(); $('offer').select(); };
+    $('accept').onclick = () => link.accept($('answer-in').value).catch((e) => say(`Bad code: ${e.message}`));
+    $('make-answer').onclick = async () => {
+      try { $('answer').value = await link.join($('offer-in').value); $('answer').select(); }
+      catch (e) { say(`Bad code: ${e.message}`); }
+    };
+
+    // Ping: whoever sends {t:'ping'} gets {t:'pong'} back with the same timestamp, so
+    // now - ts is the round-trip time. Both sides answer pings; the host sends them.
+    let host = false;
+    $('make-offer').addEventListener('click', () => { host = true; });
+    link.onopen = () => {
+      say('<span class="ok">Connected!</span>');
+      if (host) setInterval(() => link.send({ t: 'ping', ts: performance.now() }), 1000);
+    };
+    link.onclose = () => say('Connection closed.');
+    link.onmessage = (m) => {
+      if (m.t === 'ping') link.send({ t: 'pong', ts: m.ts });
+      else if (m.t === 'pong') say(`<span class="ok">Connected!</span> ping ${Math.round(performance.now() - m.ts)} ms`);
+    };
+  </script>
+</body>
+</html>

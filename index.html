@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WizardBall</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=MedievalSharp&family=Press+Start+2P&display=swap">
+  <!-- The title-screen font: Wizard by Graphiqa Studio. DEMO, PERSONAL USE ONLY (see fonts/Wizard-READ-ME.txt). -->
+  <link rel="preload" href="fonts/Wizard.ttf" as="font" type="font/ttf" crossorigin>
+  <style>
+    @font-face { font-family: 'Wizard'; src: url('fonts/Wizard.ttf') format('truetype'); font-display: swap; }
+    html, body { margin: 0; height: 100%; background: #000; }
+    canvas { width: 100vw; height: 100vh; object-fit: contain; display: block; }
+
+    /* Title screen: sits over the arena, which stays visible (dimmed) behind it. */
+    #title { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; overflow-y: auto; padding: 16px 0; gap: 22px; background: rgba(0, 0, 0, 0.82); color: #fff; font-family: 'Wizard', 'MedievalSharp', 'Palatino Linotype', serif; }
+    #title[hidden] { display: none; }
+    /* Auto-margined ends centre everything when it fits and let the page scroll when it doesn't. */
+    #title::before, #title::after { content: ''; margin: auto; }
+    /* The blue and red offsets are the two players' colors splitting the title apart. */
+    #title h1 { margin: 0; font-weight: 400; font-size: clamp(56px, 13vw, 160px); letter-spacing: 4px; text-shadow: -5px 0 #48f, 5px 0 #f44, 0 0 40px rgba(255, 255, 255, 0.25); }
+    #menu { display: flex; flex-direction: column; gap: 14px; width: min(360px, 80vw); }
+    #title button { font: inherit; font-size: 26px; padding: 10px 18px; background: transparent; color: #fff; border: 2px solid #fff; cursor: pointer; }
+    #title button:hover, #title button:focus-visible { background: #fff; color: #000; outline: none; }
+    .ai { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    #ai-skill { padding: 8px; font: inherit; font-size: 22px; background: transparent; color: #fff; border: 2px solid #fff; cursor: pointer; }
+    #ai-skill option { background: #000; color: #fff; }
+    .join { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    #code-in { grid-column: 1 / -1; min-width: 0; padding: 8px; font: inherit; font-size: 26px; letter-spacing: 6px; text-align: center; text-transform: uppercase; background: transparent; color: #fff; border: 2px solid #888; }
+    #code-in:focus { border-color: #fff; outline: none; }
+    #room-code { min-height: 64px; font-size: 54px; letter-spacing: 12px; }
+    #online-status { min-height: 24px; font-size: 20px; color: #aaa; }
+    .hint { margin: 0; font-size: 16px; color: #888; }
+
+    /* The Options dialog (level select, paste/copy JSON, link to the builder) and the level name on the menu */
+    .level-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 20px; color: #ccc; }
+    #options-dialog { width: min(520px, 92vw); padding: 20px; background: #000; color: #fff; border: 2px solid #fff; font-family: inherit; }
+    #options-dialog::backdrop { background: rgba(0, 0, 0, 0.7); }
+    #options-dialog h2 { margin: 0 0 12px; font-weight: 400; font-size: 28px; }
+    #options-dialog .level { margin-bottom: 14px; }
+
+    /* Level select */
+    .level { display: grid; gap: 6px; }
+    .level label { font-size: 18px; color: #aaa; }
+    #level-select { padding: 8px; font: inherit; font-size: 22px; background: transparent; color: #fff; border: 2px solid #fff; cursor: pointer; width: 100%; }
+    #level-select option { background: #000; color: #fff; }
+    .level-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    #title button.small { font-size: 16px; padding: 4px 10px; border-width: 1px; }
+    .small-link { font-size: 16px; color: #8cf; margin-left: auto; }
+    #level-box { display: grid; gap: 6px; }
+    #level-json { height: 90px; padding: 6px; background: #000; color: #8f8; border: 1px solid #888; font: 12px monospace; box-sizing: border-box; width: 100%; }
+    #level-msg { min-height: 18px; font-size: 16px; color: #aaa; }
+
+    /* Hosting + open games */
+    .host { display: grid; gap: 6px; }
+    .check { display: flex; gap: 8px; align-items: center; font-size: 18px; color: #aaa; cursor: pointer; }
+    #lobby { width: min(560px, 92vw); }
+    #lobby h2 { margin: 0 0 6px; font-weight: 400; font-size: 24px; display: flex; align-items: center; gap: 12px; }
+    #games { display: grid; gap: 6px; }
+    .game { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #555; font-size: 18px; }
+    .game .info { flex: 1; min-width: 200px; }
+    .game .code { letter-spacing: 3px; color: #8f8; }
+    .games-note { margin: 0; font-size: 16px; color: #888; }
+  </style>
+</head>
+<body>
+  <canvas id="c" width="1920" height="1000"></canvas>
+  <div id="title">
+    <h1>WizardBall</h1>
+    <div id="menu">
+      <div class="level-row">
+        <span id="level-now"></span>
+        <button type="button" id="options-btn" class="small">Options</button>
+      </div>
+      <button type="button" id="play-btn">Play</button>
+      <div class="ai">
+        <button type="button" id="ai-btn">Play vs computer</button>
+        <select id="ai-skill" aria-label="Computer difficulty">
+          <option value="easy">Easy</option>
+          <option value="normal" selected>Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+      <div class="host">
+        <button type="button" id="host-btn">Host online game</button>
+        <label class="check"><input type="checkbox" id="public-cb"> List it in Open games (everyone plays your level)</label>
+      </div>
+      <div class="join">
+        <input id="code-in" maxlength="4" placeholder="CODE" aria-label="Room code" autocomplete="off" spellcheck="false">
+        <button type="button" id="join-btn">Join room</button>
+        <button type="button" id="watch-btn">Watch</button>
+      </div>
+    </div>
+    <div id="room-code" aria-live="polite"></div>
+    <div id="online-status" aria-live="polite"></div>
+    <section id="lobby" aria-label="Open games">
+      <h2>Open games <button type="button" id="games-refresh" class="small">Refresh</button></h2>
+      <div id="games" aria-live="polite"></div>
+    </section>
+    <dialog id="options-dialog" aria-label="Options">
+      <h2>Options</h2>
+      <div class="level">
+        <label for="level-select">Level</label>
+        <select id="level-select"></select>
+        <div class="level-tools">
+          <button type="button" id="level-paste-btn" class="small">Paste level JSON</button>
+          <button type="button" id="level-copy-btn" class="small">Copy level JSON</button>
+          <a href="builder.html" class="small-link">Level builder &rarr;</a>
+        </div>
+        <div id="level-box" hidden>
+          <textarea id="level-json" aria-label="Level JSON" placeholder="paste a level here" spellcheck="false"></textarea>
+          <button type="button" id="level-use-btn" class="small">Use this level</button>
+        </div>
+        <div id="level-msg" aria-live="polite"></div>
+      </div>
+      <button type="button" id="options-close" class="small">Close</button>
+    </dialog>
+    <p class="hint">Blue: A / D, Space &middot; Red: &larr; / &rarr;, Enter &middot; Esc: back to this menu</p>
+  </div>
+  <script src="level.js"></script>
+  <script src="sprites.js"></script>
+  <script src="net.js"></script>
+  <script src="main.js"></script>
+  <script src="online.js"></script>
+  <script src="ai.js"></script>
+  <script src="title.js"></script>
+</body>
+</html>

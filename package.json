@@ -1,0 +1,9 @@
+{
+  "name": "wizardball",
+  "private": true,
+  "description": "WizardBall: arcade soccer-platforming for wizards. No dependencies: `node server.js` to play, `npm test` to run the tests.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/run.js"
+  }
+}

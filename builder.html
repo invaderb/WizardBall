@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WizardBall level builder</title>
+  <style>
+    body { margin: 12px; background: #111; color: #ddd; font: 14px monospace; }
+    #bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    button { font: inherit; padding: 4px 10px; background: #222; color: #ddd; border: 1px solid #555; cursor: pointer; }
+    button.on { background: #48f; color: #fff; border-color: #48f; }
+    .gap { width: 16px; }
+    #msg { min-height: 18px; margin-bottom: 4px; color: #0ff; }
+    canvas { display: block; width: 100%; max-width: 1400px; aspect-ratio: 1920 / 1000; background: #000; cursor: crosshair; }
+    textarea { display: block; width: 300px; max-width: 1400px; height: 700px; margin-top: 8px; background: #000; color: #8f8; border: 1px solid #555; font: 12px monospace; box-sizing: border-box; }
+    p { max-width: 1400px; color: #999; }
+    p.nav { margin: 0 0 8px; }
+    a { color: #8cf; }
+    select, input { font: inherit; padding: 4px 6px; background: #222; color: #ddd; border: 1px solid #555; }
+  </style>
+</head>
+<body>
+  <p class="nav"><a href="index.html">&larr; Back to the game</a></p>
+  <div id="bar"></div>
+  <button type="button" command="show-modal" commandfor="my-dialog">Open Help dialog</button>
+  <dialog id="my-dialog">
+    <p>
+      Drag = draw the selected thing: wall, slow-mo zone (grey), or a goal. Ramp / Quarter-pipe: drag TOWARD the tall end
+      (drag left-to-right for a tall right side, right-to-left for a tall left side). "Goal P1" is where player 1 scores; you can add as many as you like. Right-click or Erase tool = delete the wall under the cursor. Ctrl/Cmd+Z = undo.
+      Walls: a straight drag makes a 2px hairline wall (to line up with a ramp's edge); otherwise they grow in 8px steps, and you can drag an edge in to make a wall as thin as 2px. Snapping: drawing, resizing and moving snap onto the edges of other objects (dashed pink guides show which), so walls and ramps line up exactly; a hairline wall sits flush on the side your cursor is on. Hold Alt/Option to turn that off and use the plain 8px grid. Arrow keys nudge the selection 1px (Shift: 8px). Stamps place on click. Erase a piece of the left/right boundary wall to make a warp gap.
+      Move tool: drag the ball spawn, a player spawn (colored pill), a player's health bar (3 colored segments), a wall, a goal (solid color box) or a slow-mo zone (dashed box).
+      Grab a wall, goal or zone by its edge or corner (cursor turns into a resize arrow) to resize it.
+      Keys and colors are still edited in the JSON below, then press Load.
+    </p>
+    <p>
+      Select: Move tool (M), click a wall, ramp, goal or zone (cyan outline). Anything you draw is selected for you.
+      Duplicate Ctrl/Cmd+D &middot; Copy / Paste Ctrl/Cmd+C / V (pastes at the cursor) &middot; Flip F (turns a ramp around)
+      &middot; Mirror Shift+F (moves it across the arena's center line) &middot; Grass G (on/off for a selected wall; wide walls get it automatically) &middot; Goal sparks S (cycles which edge of a selected goal sheds particles) &middot; Delete Del &middot; Deselect Esc &middot; Tools: W wall, E erase, M move.
+    </p>
+    <button type="button" commandfor="my-dialog" command="close">Close</button>
+  </dialog>
+  <div id="msg" aria-live="polite"></div>
+  <div style="display: flex; gap: 8px">
+    <canvas id="c" width="1920" height="1000"></canvas>
+    <div>
+      <div id="json-actions"></div>
+      <textarea id="json" aria-label="Level JSON" spellcheck="false"></textarea>
+    </div>
+  </div>
+  <script src="level.js"></script>
+  <script src="sprites.js"></script>
+  <script src="builder.js"></script>
+</body>
+</html>
