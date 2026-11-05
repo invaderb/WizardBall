@@ -19,6 +19,7 @@ const call = async (method, path, { body, token } = {}) => {
   return { status: r.status, body: await r.json() };
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const hostStream = require('./host_stream');
 
 async function main() {
   const server = spawn('node', [ROOT + 'server.js', String(PORT)], { cwd: ROOT, env: { ...process.env, NO_RATE_LIMIT: '1' } });
@@ -29,18 +30,23 @@ async function main() {
     const { code, token } = made.body;
     check('create room -> 4-letter code + host token', /^[A-HJ-NP-Z]{4}$/.test(code) && token.length >= 16, code);
     const R = `/api/rooms/${code}`;
-    check('host-only: list joins without token -> 403', (await call('GET', `${R}/joins`)).status === 403);
-    check('host-only: wrong token -> 403', (await call('GET', `${R}/joins`, { token: 'nope' })).status === 403);
-    check('no joins yet', (await call('GET', `${R}/joins`, { token })).body.joins.length === 0);
+    check('host-only: event stream without token -> 403', (await hostStream(BASE, code)).status === 403);
+    check('host-only: wrong token -> 403', (await hostStream(BASE, code, 'nope')).status === 403);
+    const stream = await hostStream(BASE, code, token);
+    await sleep(50);
+    check('host stream opens, no joins yet', stream.status === 200 && stream.joins.length === 0);
     check('bad role rejected', (await call('POST', `${R.toLowerCase()}/join`, { body: 'admin' })).status === 400);
     const j1 = (await call('POST', `${R.toLowerCase()}/join`, { body: 'play' })).body.id; // lowercase code ok
     check('guest asks to join -> id', typeof j1 === 'string' && j1.length > 0);
-    const list = (await call('GET', `${R}/joins`, { token })).body.joins;
-    check('host sees the request with its role', list.length === 1 && list[0].id === j1 && list[0].role === 'play');
+    for (let i = 0; i < 40 && !stream.joins.length; i++) await sleep(25);
+    check('the request is pushed to the host straight away, with its role', stream.joins.length === 1 && stream.joins[0].id === j1 && stream.joins[0].role === 'play', JSON.stringify(stream.joins));
     check('guest sees no offer yet', (await call('GET', `${R}/joins/${j1}`)).body.offer === null);
     check('offer without token -> 403', (await call('POST', `${R}/joins/${j1}/offer`, { body: 'OFFER-1' })).status === 403);
     check('host posts offer', (await call('POST', `${R}/joins/${j1}/offer`, { body: 'OFFER-1', token })).status === 200);
-    check('request leaves the host list once it has an offer', (await call('GET', `${R}/joins`, { token })).body.joins.length === 0);
+    // What a reconnecting host is sent: every request still waiting for an offer.
+    const pending = async () => { const s = await hostStream(BASE, code, token); await sleep(100); s.close(); return s.joins.map((j) => j.id); };
+    check('a newer host stream replaces the older one', (await pending()).length === 0 && (await sleep(50), stream.ended));
+    check('a request with an offer is not re-sent on reconnect', (await pending()).length === 0);
     check('guest gets the offer', (await call('GET', `${R}/joins/${j1}`)).body.offer === 'OFFER-1');
     check('guest answers', (await call('POST', `${R}/joins/${j1}/answer`, { body: 'ANSWER-1' })).status === 200);
     check('second answer refused (409)', (await call('POST', `${R}/joins/${j1}/answer`, { body: 'X' })).status === 409);
@@ -51,17 +57,20 @@ async function main() {
     // ---- API: reject, several joiners, limits ----
     const j2 = (await call('POST', `${R}/join`, { body: 'watch' })).body.id;
     const j3 = (await call('POST', `${R}/join`, { body: 'play' })).body.id;
-    check('two requests pending at once', (await call('GET', `${R}/joins`, { token })).body.joins.length === 2);
+    check('two requests pending at once are both sent on reconnect', (await pending()).length === 2);
     await call('POST', `${R}/joins/${j3}/reject`, { body: 'game is full', token });
     check('guest sees the rejection reason', (await call('GET', `${R}/joins/${j3}`)).body.error === 'game is full');
-    check('rejected request leaves the host list', (await call('GET', `${R}/joins`, { token })).body.joins.map((j) => j.id).join() === j2);
+    check('a rejected request is not re-sent', (await pending()).join() === j2);
     let last = 200;
     for (let i = 0; i < 40 && last !== 429; i++) last = (await call('POST', `${R}/join`, { body: 'watch' })).status;
     check('join requests are capped (429)', last === 429);
 
-    check('unknown code -> 404 with a message', (await call('GET', '/api/rooms/ZZZZ/joins', { token })).body.error === 'no game with that code');
+    check('unknown code -> 404 with a message', (await call('GET', '/api/rooms/ZZZZ/joins/x', { token })).body.error === 'no game with that code');
     check('close room needs the token', (await call('DELETE', R)).status === 403);
+    const last1 = await hostStream(BASE, code, token);
     check('host closes the room', (await call('DELETE', R, { token })).status === 200);
+    await sleep(50);
+    check("closing the room ends the host's stream", last1.ended);
     check('closed room is gone', (await call('POST', `${R}/join`, { body: 'play' })).status === 404);
     const big = await fetch(BASE + '/api/rooms/' + code + '/join', { method: 'POST', body: 'x'.repeat(100 * 1024) }).then((r) => r.status, () => 'connection dropped');
     check('oversized body rejected', big !== 200, String(big));
@@ -91,7 +100,7 @@ async function main() {
       const els = {};
       const el = () => ({ getContext: () => noop, hidden: false, value: '', textContent: '', onclick: null, select() {}, focus() {}, blur() {}, addEventListener() {}, append() {}, replaceChildren() {}, checked: false });
       const sandbox = {
-        console, Math, JSON, Set, Map, Object, Boolean, Number, Array, Promise, setTimeout, performance: { now: () => 0 },
+        console, Math, JSON, Set, Map, Object, Boolean, Number, Array, Promise, setTimeout, AbortController, TextDecoderStream, performance: { now: () => 0 },
         requestAnimationFrame: () => {}, addEventListener: () => {}, localStorage: { getItem: () => null },
         HTMLInputElement: class {}, encodeURIComponent, TypeError,
         fetch: fetchImpl ?? ((u, o) => fetch(BASE + u, o)),
@@ -111,7 +120,7 @@ async function main() {
     }
 
     const host = world();
-    host.run('hostGame()'); // not awaited: it starts a polling loop
+    host.run('hostGame()'); // not awaited: it holds the event stream open
     for (let i = 0; i < 60 && !host.els['room-code'].textContent; i++) await sleep(50);
     const roomCode = host.els['room-code'].textContent;
     check('host sees a room code on screen', /^[A-Z]{4}$/.test(roomCode), roomCode);
@@ -148,7 +157,7 @@ async function main() {
     await stranger.run("joinGame('play')");
     check('empty code asks for one', stranger.els['online-status'].textContent === 'Type the 4-letter code first.');
 
-    host.run('closeRoom()'); // stops the polling loop
+    host.run('closeRoom()'); // aborts the event stream
     check('closing the room clears the label', host.run("net.roomCode === '' && room === null"));
     await sleep(300);
     check('the room is closed on the server', (await call('POST', `/api/rooms/${roomCode}/join`, { body: 'watch' })).status === 404);

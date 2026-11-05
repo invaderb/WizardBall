@@ -9,6 +9,7 @@ const call = async (method, path, { body, token } = {}) => {
   return { status: r.status, body: await r.json() };
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const hostStream = require('./host_stream');
 (async () => {
   const server = spawn('node', [ROOT + 'server.js', String(PORT)], { cwd: ROOT, env: { ...process.env, NO_RATE_LIMIT: '1' } });
   await new Promise((resolve) => server.stdout.on('data', (d) => d.toString().includes('http://localhost') && resolve()));
@@ -51,7 +52,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     check('the lobby lists at most 50 games', (await call('GET', '/api/rooms')).body.rooms.length === 50);
     // existing handshake still works on a public room
     const j = (await call('POST', `/api/rooms/${second.code}/join`, { body: 'play' })).body;
-    check('joining a public room works exactly like a private one', typeof j.id === 'string' && (await call('GET', `/api/rooms/${second.code}/joins`, { token: second.token })).body.joins.length === 1);
+    const s = await hostStream(BASE, second.code, second.token);
+    await sleep(100);
+    s.close();
+    check('joining a public room works exactly like a private one', typeof j.id === 'string' && s.joins.length === 1 && s.joins[0].id === j.id);
   } finally { server.kill(); }
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
   process.exit(failed ? 1 : 0);

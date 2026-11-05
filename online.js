@@ -18,7 +18,7 @@ const SERVER_HELP = "Can't reach the game server. Start it with `node server.js`
 const describe = (err) => (err instanceof TypeError ? SERVER_HELP : `Failed: ${err.message}`);
 const MAX_WATCHERS = 8;
 
-let room = null;        // host only: { code, token, peers: [{ role, link }], seen: Set of join ids }
+let room = null;        // host only: { code, token, peers: [{ role, link }], seen: Set of join ids, stop: aborts the event stream }
 let link = null;        // guest/watcher only: the one connection to the host
 let joinRole = 'play';  // guest/watcher: what we asked for
 let attempt = 0;        // bumped to cancel any in-progress hosting/joining loop
@@ -140,27 +140,39 @@ async function hostGame() {
     const body = await res.json();
     if (!res.ok) return say(body.error);
     if (attempt !== mine) return; // cancelled while we waited
-    room = { code: body.code, token: body.token, peers: [], seen: new Set() };
+    room = { code: body.code, token: body.token, peers: [], seen: new Set(), stop: new AbortController() };
     net.roomCode = room.code;
     net.tick = hostTick;
     $('room-code').textContent = room.code;
     say('Share this code. Friends can Join to play, or Watch.');
-    pollJoins(room);
+    listenForJoins(room);
   } catch (err) { say(describe(err)); }
 }
 
-// Check in with the server every moment or so: it's how we hear about new joiners (and how it knows we're alive).
-async function pollJoins(r) {
-  let beat = 0;
+// Hold one connection open to the server: it pushes each join request down it (Server-Sent Events), and the room
+// lives exactly as long as this connection does, so refreshing or closing the tab takes the game out of the lobby.
+// Read with fetch rather than EventSource so the token stays in a header and a 404 (room gone) is told apart from a blip.
+async function listenForJoins(r) {
   while (room === r) {
-    if (++beat % 10 === 0) publishInfo(); // a heartbeat, so the lobby's counts can't go stale
     try {
-      const res = await fetch(`/api/rooms/${r.code}/joins`, { headers: hostHeaders(r) });
+      const res = await fetch(`/api/rooms/${r.code}/events`, { headers: hostHeaders(r), signal: r.stop.signal });
       if (res.status === 404) { say('The room closed on the server.'); return closeRoom(); } // (a 429 or 5xx is just a hiccup)
-      if (res.ok) for (const j of (await res.json()).joins)
-        if (!r.seen.has(j.id)) { r.seen.add(j.id); acceptJoin(r, j); } // each join runs on its own
-    } catch { /* server hiccup: try again next round */ }
-    await sleep(700);
+      if (res.ok) {
+        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buf = '';
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const events = (buf += value).split('\n\n');
+          buf = events.pop(); // an unfinished event waits for the rest
+          for (const e of events) for (const line of e.split('\n')) if (line.startsWith('data: ')) {
+            const j = JSON.parse(line.slice(6));
+            if (!r.seen.has(j.id)) { r.seen.add(j.id); acceptJoin(r, j); } // each join runs on its own; a reconnect re-sends pending ones
+          }
+        }
+      }
+    } catch { /* dropped (or we closed it): reconnect below, well inside the server's grace period */ }
+    if (room === r) await sleep(1000);
   }
 }
 
@@ -233,6 +245,7 @@ function closeRoom() {
   net.roomCode = '';
   net.watchers = 0;
   if (net.tick === hostTick) net.tick = null;
+  r.stop?.abort(); // (rooms built by hand in tests have no stream)
   fetch(`/api/rooms/${r.code}`, { method: 'DELETE', headers: hostHeaders(r) }).catch(() => {});
   for (const p of r.peers) { p.link.onclose = null; p.link.pc.close(); }
 }

@@ -17,7 +17,7 @@ function makeWorld({ search = '', saved = null, rooms = null, clipboard = null }
   });
   const fetched = [];
   const sandbox = {
-    console, Math, JSON, Set, Map, Object, Boolean, Number, Array, Promise, setTimeout, URLSearchParams, performance: { now: () => 0 },
+    console, Math, JSON, Set, Map, Object, Boolean, Number, Array, Promise, setTimeout, URLSearchParams, AbortController, performance: { now: () => 0 },
     requestAnimationFrame: () => {}, addEventListener: () => {}, HTMLInputElement: class {}, encodeURIComponent, TypeError,
     localStorage: { getItem: () => (saved ? JSON.stringify(saved) : null) }, location: { search },
     navigator: clipboard ? { clipboard } : {},

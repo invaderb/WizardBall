@@ -15,9 +15,10 @@ const path = require('path');
 
 const PORT = Number(process.argv[2] ?? process.env.PORT ?? 3000);
 const ROOT = __dirname;
-// A room closes after this long without its host checking in. The host checks in every ~0.7s, but a browser
-// throttles a background tab's timers to about once a minute, so this must be well above a minute.
-const ROOM_TTL = Number(process.env.ROOM_TTL_MS) || 5 * 60 * 1000;
+// A room lives as long as its host's open event stream (see /events below). When that drops (refresh, closed tab,
+// crash) the room goes after this grace period, which is just long enough for the host to reconnect after a blip.
+const HOST_GRACE = Number(process.env.HOST_GRACE_MS) || 8000;
+const KEEPALIVE = 25 * 1000;      // a comment down every stream, so proxies don't cut idle ones and dead sockets get noticed
 const JOIN_TTL = 2 * 60 * 1000;   // a join request that nobody finishes is dropped
 const MAX_JOINS = 32;             // pending join requests per room
 const MAX_BODY = 64 * 1024;   // a connection description is a few KB; refuse anything silly
@@ -25,7 +26,7 @@ const MAX_ROOMS = 1000;
 const MAX_LISTED = 50;           // the lobby shows at most this many open games
 const MAX_ROOMS_PER_IP = 3;      // open rooms one address can hold at once
 const TRUST_PROXY = process.env.TRUST_PROXY === '1'; // behind nginx/Cloudflare etc: use X-Forwarded-For as the client address
-// Per-address token buckets: { burst, per second }. Polling is the heavy legit use (a host polls ~1.5/s),
+// Per-address token buckets: { burst, per second }. Polling is the heavy legit use (a joiner polls ~2/s while it connects),
 // so these are generous for a person and tiny for a script. Creating rooms is the expensive one.
 const LIMITS = {
   api: { burst: 60, rate: 10 },
@@ -39,9 +40,12 @@ const TYPES = {
   '.ttf': 'font/ttf', '.woff': 'font/woff', '.woff2': 'font/woff2', '.txt': 'text/plain',
 };
 
-// code -> { token, expires, public, info, joins: Map(id -> { role, offer, answer, error, created }) }
+// code -> { token, stream, lostAt, public, info, joins: Map(id -> { role, offer, answer, error, created }) }
+// `stream` is the host's open event stream (null while it has none, since `lostAt`).
 // `info` is what the lobby shows about the game; the HOST reports it (players, watchers, level, playing).
 const rooms = new Map();
+const push = (room, obj) => room.stream?.write(`data: ${JSON.stringify(obj)}\n\n`); // one Server-Sent Event to the host
+setInterval(() => { for (const r of rooms.values()) r.stream?.write(':\n\n'); }, KEEPALIVE).unref();
 
 const UNLIMITED = process.env.NO_RATE_LIMIT === '1'; // for tests that hammer the API
 const buckets = new Map(); // "kind ip" -> { tokens, at }
@@ -59,7 +63,8 @@ function allow(kind, ip) {
 setInterval(() => { // forget addresses that have been quiet long enough to be full again
   for (const [k, b] of buckets) if (Date.now() - b.at > 5 * 60 * 1000) buckets.delete(k);
 }, 60 * 1000).unref();
-const clientIp = (req) => (TRUST_PROXY && req.headers['x-forwarded-for']?.split(',')[0].trim()) || req.socket.remoteAddress;
+// Behind Cloudflare, CF-Connecting-IP is set by Cloudflare itself; X-Forwarded-For's first entry is whatever the client sent.
+const clientIp = (req) => (TRUST_PROXY && (req.headers['cf-connecting-ip'] ?? req.headers['x-forwarded-for']?.split(',')[0].trim())) || req.socket.remoteAddress;
 
 function newCode() {
   for (;;) {
@@ -95,8 +100,9 @@ function readBody(req) {
 //   host   POST   /api/rooms  { public?, level? }    -> { code, token }   (public rooms are listed below)
 //   anyone GET    /api/rooms                         -> { rooms: [{ code, level, players, watchers, playing }] }  (public only)
 //   host   POST   /api/rooms/CODE/info               { level, players, watchers, playing }  (what the lobby shows)
-//   guest  POST   /api/rooms/CODE/join   'play'|'watch' -> { id }            (ask to join)
-//   host   GET    /api/rooms/CODE/joins              -> { joins: [{id, role}] } (polls; also its heartbeat)
+//   host   GET    /api/rooms/CODE/events             Server-Sent Events, held open: `data: {id, role}` per join request.
+//                                                    The room lives while this is open; a reconnect re-sends pending joins.
+//   guest  POST   /api/rooms/CODE/join   'play'|'watch' -> { id }            (ask to join; pushed to the host)
 //   host   POST   /api/rooms/CODE/joins/ID/offer     (or .../reject with a reason)
 //   guest  GET    /api/rooms/CODE/joins/ID           -> { offer, error }       (polls)
 //   guest  POST   /api/rooms/CODE/joins/ID/answer
@@ -124,7 +130,7 @@ async function api(req, res, parts, ip) {
     const code = newCode();
     const token = crypto.randomBytes(16).toString('hex');
     rooms.set(code, {
-      token, owner: ip, expires: Date.now() + ROOM_TTL, joins: new Map(),
+      token, owner: ip, stream: null, lostAt: Date.now(), joins: new Map(), // the host has HOST_GRACE to connect its stream
       public: opts.public === true, info: cleanInfo({ level: opts.level, players: 1 }),
     });
     return reply(200, { code, token });
@@ -140,13 +146,24 @@ async function api(req, res, parts, ip) {
     if (req.method !== 'DELETE') return reply(404, { error: 'not found' });
     if (!isHost) return hostOnly();
     rooms.delete(code);
+    room.stream?.end();
     return reply(200, { ok: true });
+  }
+
+  if (sub === 'events' && req.method === 'GET') {
+    if (!isHost) return hostOnly();
+    room.stream?.end(); // a newer connection replaces an older one
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' }); // (nginx would otherwise buffer the stream)
+    res.flushHeaders();
+    room.stream = res;
+    for (const [joinId, j] of room.joins) if (j.offer === null && j.error === null) push(room, { id: joinId, role: j.role });
+    res.on('close', () => { if (room.stream === res) { room.stream = null; room.lostAt = Date.now(); } });
+    return;
   }
 
   if (sub === 'info' && req.method === 'POST') { // the host reports what the lobby should show
     if (!isHost) return hostOnly();
     try { room.info = cleanInfo(JSON.parse(await readBody(req))); } catch { return reply(400, { error: 'info must be JSON' }); }
-    room.expires = Date.now() + ROOM_TTL;
     return reply(200, { ok: true });
   }
 
@@ -156,14 +173,8 @@ async function api(req, res, parts, ip) {
     if (room.joins.size >= MAX_JOINS) return reply(429, { error: 'too many people joining at once' });
     const joinId = crypto.randomBytes(6).toString('hex');
     room.joins.set(joinId, { role, offer: null, answer: null, error: null, created: Date.now() });
+    push(room, { id: joinId, role });
     return reply(200, { id: joinId });
-  }
-
-  if (sub === 'joins' && !id && req.method === 'GET') {
-    if (!isHost) return hostOnly();
-    room.expires = Date.now() + ROOM_TTL; // the host is still here
-    const pending = [...room.joins].filter(([, j]) => j.offer === null && j.error === null);
-    return reply(200, { joins: pending.map(([joinId, j]) => ({ id: joinId, role: j.role })) });
   }
 
   const join = room.joins.get(id);
@@ -210,7 +221,7 @@ function serveFile(res, pathname) {
 http.createServer(async (req, res) => {
   const now = Date.now();
   for (const [code, room] of rooms) {
-    if (room.expires < now) rooms.delete(code);
+    if (!room.stream && room.lostAt + HOST_GRACE < now) rooms.delete(code);
     else for (const [id, j] of room.joins) if (j.created + JOIN_TTL < now) room.joins.delete(id);
   }
   try {
