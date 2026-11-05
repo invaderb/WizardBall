@@ -278,6 +278,9 @@ function physicsSystem() {
 		// Walk fully out of one goal gap and you come out of the other side.
 		if (pos.x + box.w < 0) pos.x = W;
 		else if (pos.x > W) pos.x = -box.w;
+		// ...and the same up and down: fall out of an open bottom and you drop back in from the top.
+		if (pos.y + box.h < 0) pos.y = H;
+		else if (pos.y > H) pos.y = -box.h;
 	}
 }
 
@@ -429,6 +432,8 @@ function ballSystem() {
 		// Same wrap as players, for any open gap that isn't a goal (goals reset the ball first).
 		if (pos.x + ball.r < 0) pos.x = W + ball.r;
 		else if (pos.x - ball.r > W) pos.x = -ball.r;
+		if (pos.y + ball.r < 0) pos.y = H + ball.r;
+		else if (pos.y - ball.r > H) pos.y = -ball.r;
 	}
 }
 
