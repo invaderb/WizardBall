@@ -54,14 +54,19 @@ const DRAW = {
 	ramp: (r, high) => add("slopes", { ...r, high }),
 	pipe: (r, high) => add("slopes", { ...r, high, curve: true }), // quarter-pipe: curved surface
 };
+// A new goal sheds particles from the side that faces the middle of the arena (change it with the Goal particles buttons).
+function facingMiddle(r) {
+	const dx = (W / 2 - (r.x + r.w / 2)) / W, dy = (H / 2 - (r.y + r.h / 2)) / H;
+	return Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "bottom" : "top";
+}
 level.players.forEach((_, i) => {
-	DRAW[`goal${i}`] = (r) => add("goals", { owner: i, ...r });
+	DRAW[`goal${i}`] = (r) => add("goals", { owner: i, ...r, sparks: facingMiddle(r) });
 });
 // Circular versions: the drag makes a SQUARE (the circle is inscribed in it). Resizing keeps it square.
 const CIRCLE_TOOLS = new Set(["zonec"]);
 DRAW.zonec = (r) => add("zones", { ...r, shape: "circle" });
 level.players.forEach((_, i) => {
-	DRAW[`goalc${i}`] = (r) => add("goals", { owner: i, ...r, shape: "circle" });
+	DRAW[`goalc${i}`] = (r) => add("goals", { owner: i, ...r, shape: "circle", sparks: facingMiddle(r) });
 	CIRCLE_TOOLS.add(`goalc${i}`);
 });
 
@@ -268,22 +273,25 @@ function toggleGrass() {
 	});
 }
 
-// S: cycle which edge of the selected goal sheds sparks: off -> left -> right -> top -> bottom -> off.
+// Which side of the selected goal sheds particles (sparks): the Goal particles buttons set one, S cycles
+// off -> left -> right -> top -> bottom -> off. A circle goal sheds from the arc of its rim on that side.
 const SPARK_ORDER = [undefined, "left", "right", "top", "bottom"];
-function cycleSparks() {
+function setSparks(side) {
 	if (selected?.list !== "goals")
 		return msg(
 			current()
-				? "Sparks belong to goals."
+				? "Particles belong to goals."
 				: "Select a goal first (Move tool, click it).",
 		);
 	editSelected((o) => {
-		const next =
-			SPARK_ORDER[(SPARK_ORDER.indexOf(o.sparks) + 1) % SPARK_ORDER.length];
-		if (next) o.sparks = next;
+		if (side) o.sparks = side;
 		else delete o.sparks;
 	});
-	msg(`Goal sparks: ${current()?.sparks ?? "off"}`);
+	msg(`Goal particles: ${current()?.sparks ?? "off"}`);
+}
+function cycleSparks() {
+	const now = selected?.list === "goals" ? current()?.sparks : undefined;
+	setSparks(SPARK_ORDER[(SPARK_ORDER.indexOf(now) + 1) % SPARK_ORDER.length]);
 }
 
 function deleteSelected() {
@@ -642,7 +650,23 @@ addButton("Rotate (R)", rotate, null, bar);
 addButton("Mirror (Shift+F)", mirror, null, bar);
 addButton("Delete (Del)", deleteSelected, null, bar);
 addButton("Grass (G)", toggleGrass, null, bar);
-addButton("Goal sparks (S)", cycleSparks, null, bar);
+gap();
+// Goal particles: one button per side. They light up to show the selected goal's side, and are off when no goal is selected.
+const sparkLabel = document.createElement("span");
+sparkLabel.textContent = "Goal particles (S):";
+bar.append(sparkLabel);
+const sparkButtons = SPARK_ORDER.map((side) => {
+	const b = addButton({ left: "Left", right: "Right", top: "Top", bottom: "Bottom" }[side] ?? "Off", () => setSparks(side), null, bar);
+	b.title = side ? `Particles drift out of the goal's ${side} side` : "No particles from this goal";
+	return b;
+});
+function showSparks() {
+	const goal = selected?.list === "goals" ? current() : null;
+	SPARK_ORDER.forEach((side, i) => {
+		sparkButtons[i].disabled = !goal;
+		sparkButtons[i].classList.toggle("on", Boolean(goal) && goal.sparks === side);
+	});
+}
 gap();
 addButton("Undo (Ctrl+Z)", undoLast, null, bar);
 gap();
@@ -651,6 +675,25 @@ addButton(
 	() => {
 		localStorage.setItem("wizardball-level", JSON.stringify(level));
 		window.open("index.html?level=custom"); // the game's level select starts on "Your level (from the builder)"
+	},
+	null,
+	bar,
+);
+addButton(
+	"Save",
+	() => {
+		const name = level.name?.trim();
+		if (!name) {
+			nameInput.focus();
+			return msg("Name the level first (the Level name box), then Save.");
+		}
+		try {
+			const replaced = saveLevel(structuredClone(level));
+			msg(`${replaced ? "Saved over" : "Saved"} "${name}". Pick it in the game's level list, or in Start from... here.`);
+		} catch {
+			msg("Couldn't save: this browser's storage is full or turned off.");
+		}
+		fillTemplate();
 	},
 	null,
 	bar,
@@ -672,9 +715,16 @@ gap();
 const jsonActions = document.getElementById("json-actions");
 addButton(
 	"Copy JSON",
-	() => {
+	async () => {
 		out.select();
-		navigator.clipboard?.writeText(out.value);
+		// navigator.clipboard only exists on secure pages (https, or localhost), not on http://192.168.x.x: fall back to
+		// the old copy command, which works anywhere, and say what happened either way.
+		try {
+			await navigator.clipboard.writeText(out.value);
+			msg("Level JSON copied.");
+		} catch {
+			msg(document.execCommand?.("copy") ? "Level JSON copied." : "Couldn't copy: the JSON is selected, press Ctrl/Cmd+C.");
+		}
 	},
 	null,
 	jsonActions,
@@ -700,24 +750,37 @@ addButton(
 	jsonActions,
 );
 
-// Start from one of the built-in levels instead of from scratch.
+// Start from one of the built-in levels, or one you saved, instead of from scratch.
+// Values: "" = the placeholder, "0".."n" = a built-in level, "s:<name>" = a saved one.
 const template = document.createElement("select");
-template.ariaLabel = "Start from a built-in level";
-for (const [i, label] of [
-	"Start from...",
-	...DEFAULT_LEVELS.map((l, k) => levelName(l, k)),
-].entries()) {
-	const option = document.createElement("option");
-	option.value = i === 0 ? "" : String(i - 1);
-	option.textContent = label;
-	template.append(option);
+template.ariaLabel = "Start from a built-in or saved level";
+function fillTemplate() {
+	const options = [
+		["", "Start from..."],
+		...DEFAULT_LEVELS.map((l, k) => [String(k), levelName(l, k)]),
+		...readSavedLevels().map((l) => [`s:${l.name}`, `Saved: ${l.name}`]),
+	];
+	template.replaceChildren(
+		...options.map(([value, label]) => {
+			const option = document.createElement("option");
+			option.value = value;
+			option.textContent = label; // (a saved name is the user's own text: never HTML)
+			return option;
+		}),
+	);
 }
+fillTemplate();
+template.onfocus = fillTemplate; // another tab (or the game) may have saved one since
 template.onchange = () => {
 	if (template.value === "") return;
-	edit(() => {
-		level = structuredClone(DEFAULT_LEVELS[Number(template.value)]);
-		level.slopes ??= []; // (older levels have none)
-	});
+	const source = template.value.startsWith("s:")
+		? readSavedLevels().find((l) => `s:${l.name}` === template.value)
+		: DEFAULT_LEVELS[Number(template.value)];
+	if (source)
+		edit(() => {
+			level = structuredClone(source);
+			level.slopes ??= []; // (older levels have none)
+		});
 	template.value = "";
 };
 bar.append(template);
@@ -806,6 +869,7 @@ function drawGrass() {
 }
 
 function draw() {
+	showSparks(); // the selection can change from many places (clicks, keys, undo): just keep the buttons in step every frame
 	ctx.fillStyle = "#000";
 	ctx.fillRect(0, 0, W, H);
 	ctx.lineWidth = 2;

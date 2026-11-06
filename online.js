@@ -49,8 +49,8 @@ function snapshot() {
   for (const [id, pos, c, bubble, look] of query('pos', 'circle', 'bubble', 'look')) // components.bubble doesn't exist until the first air jump
     bubbles.push([id, r1(pos.x), r1(pos.y), c.r, look.color, r2(bubble.t / bubble.max)]); // how faded it is, 1 -> 0
   for (const [id, pos, p, look] of query('pos', 'particle', 'look')) {
-    if (particles.length >= 300) break; // ponytail: cap keeps a packet under ~12KB (the death beam is the busiest moment); simulate particles on the guest instead if it ever matters
-    particles.push([id, Math.round(pos.x), Math.round(pos.y), r2(p.life), p.max, look.color]);
+    if (particles.length >= 400) break; // shortcut: cap keeps a packet under ~16KB (two slow-mo zones + goal bubbles run ~300); simulate particles on the guest instead if it ever matters
+    particles.push([id, Math.round(pos.x), Math.round(pos.y), r2(p.life), p.max, look.color, r1(p.r ?? 0)]); // r: a goal bubble's size (0 = a plain square)
   }
   const { t, hit, beam, winner } = round;
   return { t: 'snap', seq: ++seq, players, ball, bubbles, particles, round: { t: r2(t), hit: r2(hit), beam, winner } };
@@ -84,7 +84,7 @@ function applySnapshot(m) {
   }
   for (const [id, x, y] of m.ball) Object.assign(components.pos.get(id), { x, y });
   syncSet(m.bubbles, 'bubble', ([, x, y, r, color, fade]) => ({ pos: { x, y }, circle: { r }, bubble: { solid: false, t: fade, max: 1 }, look: { color } })); // solidity only matters on the host
-  syncSet(m.particles, 'particle', ([, x, y, life, max, color]) => ({ pos: { x, y }, particle: { life, max }, look: { color } }));
+  syncSet(m.particles, 'particle', ([, x, y, life, max, color, r]) => ({ pos: { x, y }, particle: { life, max, r }, look: { color } })); // the host moves them (sway included); we just draw
   Object.assign(round, m.round);
 }
 

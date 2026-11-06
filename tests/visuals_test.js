@@ -156,8 +156,32 @@ check('a watcher draws both bubbles with the same fade', g.run('components.bubbl
 let threw = null;
 try { g.run('renderSystem()'); } catch (e) { threw = e.message; }
 check('...and renders them', threw === null, threw ?? '');
+// Goal particles are bubbles: rings with a size, swaying across their path as they float, and drawn that way by watchers too.
+run('for (const [id] of query("particle")) despawn(id); for (const [, g] of query("goal")) g.sparks = "top"; for (let i = 0; i < 40; i++) { tick++; goalSparkSystem(); }'); // (sparks were switched off above for a quiet background)
+const goalParts = JSON.parse(run('JSON.stringify([...query("particle")].map(e => e[1]))'));
+check('goals shed bubbles (a ring size and a sway), not plain squares', goalParts.length > 0 && goalParts.every((p) => p.r >= 2 && p.r <= 5.5 && p.wave && Math.abs(Math.hypot(p.wave.x, p.wave.y) - 1) < 1e-9), JSON.stringify(goalParts[0]));
+const sway = JSON.parse(run(`(() => {
+  for (const [id] of query("particle")) despawn(id);
+  emitBubble(500, 500, 40, 0, "#48f", 2, 0, 4);                      // drifting right...
+  emit(500, 500, 40, 0, "#48f", 2, 0);                               // ...next to a plain particle on the same path
+  const [b, p] = [...query("pos", "particle")].map((e) => e[1]);
+  const off = [];
+  for (let i = 0; i < 180; i++) { particleSystem(); off.push(b.y - p.y); }
+  return JSON.stringify(off);
+})()`));
+const crossings = sway.filter((v, i) => i && Math.sign(v) !== Math.sign(sway[i - 1])).length;
+check('a bubble sways from side to side across its path (~7px each side of its centre line), where a plain particle goes straight', crossings >= 2 && Math.max(...sway.map(Math.abs)) > 3 && Math.max(...sway.map(Math.abs)) < 15, `${crossings} crossings, max ${Math.max(...sway.map(Math.abs)).toFixed(1)}px`);
+run('for (const [id] of query("particle")) despawn(id); for (let i = 0; i < 40; i++) { tick++; goalSparkSystem(); } emit(0, 0, 0, 0, "#fff", 1)');
+const bsnap = JSON.parse(run('JSON.stringify(snapshot())'));
+g.run(`applySnapshot(${JSON.stringify({ ...bsnap, seq: 1e6 })})`);
+const guestParts = JSON.parse(g.run('JSON.stringify([...query("particle")].map(e => e[1].r))'));
+check('watchers get each bubble\'s size (a plain particle is 0), so they draw rings too', guestParts.filter((r) => r > 0).length === goalParts.length && guestParts.includes(0), JSON.stringify(guestParts.slice(0, 5)));
+threw = null;
+try { g.run('renderSystem()'); } catch (e) { threw = e.message; }
+check('...and render them', threw === null, threw ?? '');
+
 run('for (let i = 0; i < 400; i++) emit(i, 0, 0, 0, "#fff", 1)');
-check('particle cap is 300 per snapshot', JSON.parse(run('JSON.stringify(snapshot())')).particles.length === 300);
+check('particle cap is 400 per snapshot', JSON.parse(run('JSON.stringify(snapshot())')).particles.length === 400);
 
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');
 process.exit(failed ? 1 : 0);

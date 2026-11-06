@@ -8,6 +8,8 @@
     #bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
     button { font: inherit; padding: 4px 10px; background: #222; color: #ddd; border: 1px solid #555; cursor: pointer; }
     button.on { background: #48f; color: #fff; border-color: #48f; }
+    button:disabled { opacity: 0.4; cursor: default; }
+    #bar > span:not(.gap) { align-self: center; }
     .gap { width: 16px; }
     #msg { min-height: 18px; margin-bottom: 4px; color: #0ff; }
     canvas { display: block; width: 100%; max-width: 1400px; aspect-ratio: 1920 / 1000; background: #000; cursor: crosshair; }
@@ -34,7 +36,7 @@
     <p>
       Select: Move tool (M), click a wall, ramp, goal or zone (cyan outline). Anything you draw is selected for you.
       Duplicate Ctrl/Cmd+D &middot; Copy / Paste Ctrl/Cmd+C / V (pastes at the cursor) &middot; Flip F (turns a ramp around)
-      &middot; Mirror Shift+F (moves it across the arena's center line) &middot; Grass G (on/off for a selected wall; wide walls get it automatically) &middot; Goal sparks S (cycles which edge of a selected goal sheds particles) &middot; Delete Del &middot; Deselect Esc &middot; Tools: W wall, E erase, M move.
+      &middot; Mirror Shift+F (moves it across the arena's center line) &middot; Grass G (on/off for a selected wall; wide walls get it automatically) &middot; Goal particles: the Off / Left / Right / Top / Bottom buttons pick which side of the selected goal (box or circle) bubbles drift out of; new goals start facing the middle of the arena; S cycles them &middot; Delete Del &middot; Deselect Esc &middot; Tools: W wall, E erase, M move.
     </p>
     <button type="button" commandfor="my-dialog" command="close">Close</button>
   </dialog>
@@ -46,8 +48,8 @@
       <textarea id="json" aria-label="Level JSON" spellcheck="false"></textarea>
     </div>
   </div>
-  <script src="level.js"></script>
-  <script src="sprites.js"></script>
-  <script src="builder.js"></script>
+  <script src="level.js?v=4"></script>
+  <script src="sprites.js?v=4"></script>
+  <script src="builder.js?v=4"></script>
 </body>
 </html>

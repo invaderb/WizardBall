@@ -57,7 +57,7 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log(ok ? 'P
     run('tick = 2; for (const [id] of query("particle")) despawn(id); slowSystem()');
     for (const p of JSON.parse(run('JSON.stringify([...query("pos","particle")].map(e => e[1]))'))) { total++; if (Math.hypot(p.x - 500, p.y - 500) > 100.0001) outside++; }
   }
-  check('sparkles are emitted only inside a circular zone (400 samples)', total === 400 && outside === 0, `${total} emitted, ${outside} outside`);
+  check('sparkles are emitted only inside a circular zone (3 in 4 steps emit one: ~300 of 400)', total > 250 && total < 350 && outside === 0, `${total} emitted, ${outside} outside`);
   run('for (const [id] of query("slow")) despawn(id); spawn({ pos: { x: 400, y: 400 }, box: { w: 200, h: 100 }, slow: { color: "#888", shape: "circle" } })'); // an ellipse
   ball(500, 450); run('slowSystem()');
   check('a non-square box makes an ellipse: centre in', run('clock.scale') < 1);

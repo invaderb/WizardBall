@@ -447,12 +447,30 @@ function emit(x, y, vx, vy, color, life, g = 600) {
 	});
 }
 
+// A bubble particle (the goals'): drawn as a ring of radius r, and it sways from side to side across its path.
+// `wave` = the sideways direction (unit vector) and where in the sway it starts.
+function emitBubble(x, y, vx, vy, color, life, g, r) {
+	const speed = Math.hypot(vx, vy) || 1;
+	spawn({
+		pos: { x, y },
+		vel: { x: vx, y: vy },
+		particle: { life, max: life, g, r, wave: { x: -vy / speed, y: vx / speed, phase: Math.random() * Math.PI * 2 } },
+		look: { color },
+	});
+}
+
 // Age particles, drift them, delete the dead ones. (Deleting from a Map mid-loop is safe in JS.)
 function particleSystem() {
 	for (const [id, pos, vel, p] of query("pos", "vel", "particle")) {
 		vel.y += p.g * DT;
 		pos.x += vel.x * DT;
 		pos.y += vel.y * DT;
+		if (p.wave) {
+			// the sway: a sine wave across the path, about 7px each way at ~1 wobble a second
+			const s = Math.cos((p.max - p.life) * 7 + p.wave.phase) * 50 * DT;
+			pos.x += p.wave.x * s;
+			pos.y += p.wave.y * s;
+		}
 		p.life -= DT;
 		if (p.life <= 0) despawn(id);
 	}
@@ -559,7 +577,7 @@ function goalSparkSystem() {
 	for (const [, gp, gb, goal, look] of query("pos", "box", "goal", "look")) {
 		const n = EDGES[goal.sparks];
 		if (!n) continue;
-		const speed = () => 30 + Math.random() * 50;
+		const speed = () => 20 + Math.random() * 35; // bubbles float off slowly (they rise as they go: negative gravity below)
 		let x, y;
 		let dx = n[0],
 			dy = n[1];
@@ -576,14 +594,15 @@ function goalSparkSystem() {
 			y =
 				n[1] === 0 ? gp.y + Math.random() * gb.h : gp.y + (n[1] > 0 ? gb.h : 0);
 		}
-		emit(
+		emitBubble(
 			x,
 			y,
 			dx * speed() + (Math.random() - 0.5) * 20,
-			dy * speed() + (Math.random() - 0.5) * 20 - (n[1] === 0 ? 40 : 0),
+			dy * speed() + (Math.random() - 0.5) * 20 - (n[1] === 0 ? 25 : 0),
 			look.color,
-			0.8 + Math.random() * 0.6,
-			0,
+			1 + Math.random() * 0.7,
+			-30,
+			2 + Math.random() * 3.5,
 		);
 	}
 }
@@ -598,9 +617,9 @@ function slowSystem() {
 		const area = shapeOf(zp, zb, zone.shape);
 		for (const [, p] of query("pos", "vel", "circle")) // only the ball slows the game (bubbles have no vel, so they're skipped)
 			if (inShape(p.x, p.y, area)) slow = true;
-		// A steady drift of sparkles rising through the zone: one every 2nd step (it was every 6th), so it
-		// reads as a field. Slightly varied speed and life so it doesn't look like a grid of dots.
-		if (tick % 2 === 0) {
+		// A steady drift of sparkles rising through the zone: ~90 a second (3 in every 4 steps), so it reads as a
+		// field. Slightly varied speed and life so it doesn't look like a grid of dots.
+		if (Math.random() < 0.75) {
 			let x,
 				y,
 				tries = 0;
@@ -637,6 +656,10 @@ function resetSystem() {
 		vel.x = 0;
 		vel.y = 0;
 	}
+	// The pose only updates during play, so without this a player would sit through the countdown still tucked
+	// in mid-jump (or facing wherever the goal caught them). Back to how they spawn: standing, facing the middle.
+	for (const [, anim, sp] of query("anim", "spawn"))
+		Object.assign(anim, { facing: sp.x < W / 2 ? 1 : -1, phase: 0, moving: false, air: false, vy: 0 });
 }
 
 // Trigger zone: ball center inside a goal box = the goal's owner loses a life.
@@ -784,9 +807,19 @@ function renderSystem() {
 	for (const [, pos, p, look] of query("pos", "particle", "look")) {
 		ctx.globalAlpha = p.life / p.max; // fade out as it ages
 		ctx.fillStyle = look.color;
-		ctx.fillRect(pos.x - 3, pos.y - 3, 6, 6);
+		if (p.r) {
+			// a bubble: a thin ring that swells a little as it floats off, with a glint on its upper left
+			const r = p.r * (1.6 - 0.6 * (p.life / p.max));
+			ctx.strokeStyle = look.color;
+			ctx.lineWidth = 1.5;
+			ctx.beginPath();
+			ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+			ctx.stroke();
+			ctx.fillRect(pos.x - r * 0.45 - 0.75, pos.y - r * 0.45 - 0.75, 1.5, 1.5);
+		} else ctx.fillRect(pos.x - 3, pos.y - 3, 6, 6);
 	}
 	ctx.globalAlpha = 1;
+	ctx.lineWidth = 1;
 	for (const [id, pos, c, look] of query("pos", "circle", "look")) {
 		if (components.bubble?.has(id)) continue; // bubbles were drawn above
 		ctx.beginPath();

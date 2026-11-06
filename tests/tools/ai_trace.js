@@ -27,12 +27,12 @@ for (let i = 0; i < 120 * (Number(process.argv[5] ?? 120)); i++) {
     else { fillInputs(); controlSystem(); physicsSystem(); ballSystem(); bubbleSystem(); goalSystem(); slowSystem(); effectsSystem(); particleSystem(); }
     pressed.clear();
   })()`);
-  if (i % 30 === 0) { const s = snap(); s.climb = run('aiMem.climbing'); s.t = (i / 120).toFixed(1); ring.push(s); if (ring.length > Number(process.argv[6] ?? 16)) ring.shift(); }
+  if (i % 30 === 0) { const s = snap(); s.branch = run('aiMem.branch'); s.t = (i / 120).toFixed(1); ring.push(s); if (ring.length > Number(process.argv[6] ?? 16)) ring.shift(); }
   const now = lives();
   const own = now[1] < prev[1], scored = now[0] < prev[0];
   if ((which === 'own' && own) || (which === 'score' && scored) || (which === 'end' && i === 120 * Number(process.argv[5]) - 1)) {
     console.log(`${skill} seed ${seed}: ${which} goal at ${(i / 120).toFixed(1)}s. Last 4s (every 0.25s):`);
-    for (const s of ring) console.log(`  t=${s.t.padStart(5)}  me=${String(s.me).padEnd(9)} ball=${String(s.ball).padEnd(9)} v=${String(s.v).padEnd(10)} input=${s.inp} climbing=${s.climb}`);
+    for (const s of ring) console.log(`  t=${s.t.padStart(5)}  me=${String(s.me).padEnd(9)} ball=${String(s.ball).padEnd(9)} v=${String(s.v).padEnd(10)} input=${s.inp} branch=${s.branch}`);
     break;
   }
   prev = now;

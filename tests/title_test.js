@@ -6,7 +6,7 @@ const files = ['level.js', 'sprites.js', 'net.js', 'main.js', 'online.js', 'ai.j
 const srcs = files.map((f) => fs.readFileSync(dir + f, 'utf8'));
 const src = srcs.join('\n');
 
-function makeWorld({ search = '', saved = null, rooms = null, clipboard = null } = {}) {
+function makeWorld({ search = '', saved = null, savedList = null, rooms = null, clipboard = null } = {}) {
   const noop = new Proxy({}, { get: () => () => {}, set: () => true });
   const els = {};
   const makeEl = (tag = 'div') => ({
@@ -19,7 +19,7 @@ function makeWorld({ search = '', saved = null, rooms = null, clipboard = null }
   const sandbox = {
     console, Math, JSON, Set, Map, Object, Boolean, Number, Array, Promise, setTimeout, URLSearchParams, AbortController, performance: { now: () => 0 },
     requestAnimationFrame: () => {}, addEventListener: () => {}, HTMLInputElement: class {}, encodeURIComponent, TypeError,
-    localStorage: { getItem: () => (saved ? JSON.stringify(saved) : null) }, location: { search },
+    localStorage: { getItem: (k) => (k === 'wizardball-levels' ? (savedList ? JSON.stringify(savedList) : null) : saved ? JSON.stringify(saved) : null) }, location: { search },
     navigator: clipboard ? { clipboard } : {},
     fetch: (url, opts) => {
       fetched.push({ url, method: opts?.method ?? 'GET', body: opts?.body, headers: opts?.headers });
@@ -54,7 +54,7 @@ const lastDefault = (w) => `d${w.run('DEFAULT_LEVELS.length') - 1}`; // the sele
     check('...and none of them are on the main menu any more', levelIds.every((i) => !menu.includes(i)));
     check('the main menu has the Options button and the current level name instead', menu.includes('id="options-btn"') && menu.includes('id="level-now"'));
     check('the dialog is a native <dialog> (focus trap, Esc to close, backdrop) with a Close button', /^<dialog id="options-dialog"/.test(dlg) && dlg.includes('id="options-close"'));
-    check('the dialog sits inside the title screen so it picks up its button styles', html.indexOf('<dialog') > html.indexOf('<div id="title">') && html.indexOf('</dialog>') < html.indexOf('</div>\n  <script src="level.js">') + 1);
+    check('the dialog sits inside the title screen so it picks up its button styles', html.indexOf('<dialog') > html.indexOf('<div id="title">') && html.indexOf('</dialog>') < html.indexOf('</div>\n  <script src="level.js') + 1);
 
     const w = makeWorld();
     check('the menu shows which level is selected: "Level: Classic"', w.els['level-now'].textContent === 'Level: Classic', w.els['level-now'].textContent);
@@ -122,6 +122,15 @@ const lastDefault = (w) => `d${w.run('DEFAULT_LEVELS.length') - 1}`; // the sele
     check('an unnamed saved level is "Untitled level"', optionTexts(unnamed).at(-1) === 'custom=Yours: Untitled level (from the builder)', optionTexts(unnamed).at(-1));
     const bad = makeWorld({ saved: { walls: 'nope' } });
     check('a corrupt saved level is simply not offered', optionTexts(bad).join('|') === defaultOpts(bad));
+
+    // levels saved with the builder's Save button: every one is in the list, by name, and plays
+    const cave = { ...lv, name: 'Cave' }, tower = { ...lv, name: 'Tower', walls: lv.walls.slice(0, 1) };
+    const s = makeWorld({ saved: lv, savedList: [cave, { name: 'Junk', walls: 'nope' }, tower] });
+    check('every level saved in the builder is listed as "Saved: name" (after "Yours"), junk skipped', optionTexts(s).join('|') === `${defaultOpts(s)}|custom=Yours: My arena (from the builder)|s:Cave=Saved: Cave|s:Tower=Saved: Tower`, optionTexts(s).join('|'));
+    s.els['level-select'].value = 's:Tower'; s.els['level-select'].onchange();
+    check('choosing one plays it (1 wall), labelled by its name alone', s.run('[...query("solid")].length') === 1 && s.run('levelLabel') === 'Tower' && s.run('LEVEL.name') === 'Tower', s.run('levelLabel'));
+    s.run('openTitle()');
+    check('reopening the title keeps it chosen', s.els['level-select'].value === 's:Tower' && s.run('LEVEL.name') === 'Tower');
   }
 
   // ===================== paste + copy JSON =====================

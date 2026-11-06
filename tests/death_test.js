@@ -98,8 +98,14 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
   check('the scorer did not move at all', samples.every((s) => s.red === 1500));
   check('the ball stays where it scored (frozen)', run('[...query("pos","vel","circle")][0][1].x') === -50);
   check('still no explosion particles at any point: only the beam', (() => { const cs = JSON.parse(run('JSON.stringify([...query("particle","look")].map(e => e[2].color))')); return cs.every((c) => c === run('round.beam?.color ?? "#f44"') || true); })());
+  // the scorer was caught mid-somersault, facing away from the middle, running
+  run(`Object.assign(components.anim.get(${who(1)}[0]), { facing: 1, air: true, moving: true, phase: 0.6, vy: -400 })`);
   run('frame(5000)'); run('frame(5100)');
   check('afterwards: reset to spawn, standing, countdown running', (() => { const p = pos(0); return p.x === 140 && p.y === 928 && p.vx === 0 && run('round.hit') <= 0 && run('round.t') > 2; })(), JSON.stringify(pos(0)));
+  const pose = (slot) => JSON.parse(run(`JSON.stringify(components.anim.get(${who(slot)}[0]))`));
+  check('...and both players are back in their spawn pose for the countdown: standing (not tucked in a ball), facing the middle',
+    JSON.stringify(pose(0)) === JSON.stringify({ facing: 1, phase: 0, moving: false, air: false, vy: 0 })
+    && JSON.stringify(pose(1)) === JSON.stringify({ facing: -1, phase: 0, moving: false, air: false, vy: 0 }), JSON.stringify([pose(0), pose(1)]));
 }
 
 // ===================== rendering: it stays visible, topples, ignores the somersault =====================

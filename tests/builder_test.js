@@ -7,6 +7,7 @@ const src = fs.readFileSync(dir + 'level.js', 'utf8') + '\n' + fs.readFileSync(d
 const log = [];
 const noop = new Proxy({}, { get: (_, p) => (...a) => { log.push([p, ...a]); }, set: (_, p, v) => { log.push(['set', p, v]); return true; } });
 const created = [];
+const store = new Map(); // the fake localStorage
 const handlers = { window: {}, canvas: {} };
 const out = { value: '', select() {} };
 const msgEl = { textContent: '' };
@@ -15,9 +16,9 @@ const canvas = { getContext: () => noop, getBoundingClientRect: () => ({ left: 0
 const els = { c: canvas, json: out, bar: { append() {} }, msg: msgEl, 'json-actions': { append() {} } };
 const sandbox = {
   console, Math, JSON, Object, Array, Number, structuredClone, setTimeout, clearTimeout, alert() {},
-  requestAnimationFrame: () => {}, localStorage: { setItem() {}, removeItem() {} }, navigator: {}, window: {},
+  requestAnimationFrame: () => {}, localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) }, navigator: {}, window: {},
   addEventListener: (t, f) => { (handlers.window[t] ??= []).push(f); },
-  document: { getElementById: (id) => els[id], createElement: (tag) => { const e = { tag, textContent: '', value: '', classList: { toggle() {} }, style: {}, append(c) { (this.children ??= []).push(c); } }; created.push(e); return e; } },
+  document: { getElementById: (id) => els[id], createElement: (tag) => { const e = { tag, textContent: '', value: '', classList: { on: new Set(), toggle(c, v) { if (v) this.on.add(c); else this.on.delete(c); } }, style: {}, append(c) { (this.children ??= []).push(c); }, replaceChildren(...c) { this.children = c; }, focus() {} }; created.push(e); return e; } },
 };
 vm.createContext(sandbox);
 vm.runInContext(src, sandbox);
@@ -174,6 +175,29 @@ run('selected = { list: "goals", index: 0 }'); key('s'); key('z', { ctrlKey: tru
 check('a sparks change is one undo step', true);
 check('sparks edits keep the level valid for the game', run('isValidLevel(JSON.parse(out.value))') === true);
 
+// ---- the Goal particles buttons ----
+const sparkBtn = (label) => created.find((e) => e.tag === 'button' && e.textContent === label);
+const lit = () => ['Off', 'Left', 'Right', 'Top', 'Bottom'].filter((l) => sparkBtn(l).classList.on.has('on'));
+check('there is a labelled button per side, plus Off', ['Off', 'Left', 'Right', 'Top', 'Bottom'].every(sparkBtn) && created.some((e) => e.textContent === 'Goal particles (S):'));
+run('selected = null; draw()');
+check('with no goal selected they are disabled, none lit', ['Off', 'Left', 'Top'].every((l) => sparkBtn(l).disabled) && lit().length === 0);
+run('selected = { list: "goals", index: 0 }'); sparkBtn('Top').onclick(); run('draw()');
+check('Top sets the selected goal to shed from its top, and lights up', sparksOf() === 'top' && JSON.stringify(lit()) === '["Top"]' && !sparkBtn('Top').disabled, JSON.stringify(lit()));
+sparkBtn('Off').onclick(); run('draw()');
+check('Off removes them (Off lit)', run('"sparks" in level.goals[0]') === false && JSON.stringify(lit()) === '["Off"]');
+sparkBtn('Left').onclick();
+check('each button press is one undo step', (() => { key('z', { ctrlKey: true }); return run('"sparks" in level.goals[0]') === false; })());
+run('selected = { list: "walls", index: 0 }'); sparkBtn('Left').onclick();
+check('pressing one with a wall selected explains and changes nothing', /belong to goals/.test(msgEl.textContent));
+// new goals: particles on by default, from the side that faces the middle of the arena
+run('edit(() => DRAW.goal0({ x: 24, y: 400, w: 60, h: 200 }))');
+check('a new goal by the left wall sheds to the right (toward the middle)', run('level.goals.at(-1).sparks') === 'right');
+run('edit(() => DRAW.goalc1({ x: 900, y: 40, w: 120, h: 120 }))');
+check('a new circle goal at the top sheds downward', run('level.goals.at(-1).sparks') === 'bottom');
+const goalsNow = run('level.goals.length');
+key('z', { ctrlKey: true }); key('z', { ctrlKey: true }); // take the two test goals back out
+check('(undo removes the two goals drawn above)', run('level.goals.length') === goalsNow - 2);
+
 // ---- stamps ----
 key('w'); run("pick('platform')");
 click(500, 300);
@@ -202,7 +226,7 @@ dragFrom(600, 600, 496, 560);
 check('dragging up and to the left extends the square up and to the left', JSON.stringify(last('zones')) === '{"x":496,"y":496,"w":104,"h":104,"shape":"circle"}', JSON.stringify(last('zones')));
 run("pick('goalc1')");
 dragFrom(1000, 296, 1200, 376);
-check('Goal circle (P2): a circular goal for player 2', JSON.stringify(last('goals')) === '{"owner":1,"x":1000,"y":296,"w":200,"h":200,"shape":"circle"}', JSON.stringify(last('goals')));
+check('Goal circle (P2): a circular goal for player 2 (particles on the side facing the middle)', JSON.stringify(last('goals')) === '{"owner":1,"x":1000,"y":296,"w":200,"h":200,"shape":"circle","sparks":"bottom"}', JSON.stringify(last('goals')));
 run("pick('goalc0')");
 dragFrom(1400, 296, 1496, 400);
 check('...and for player 1', last('goals').owner === 0 && last('goals').shape === 'circle');
@@ -507,5 +531,52 @@ const lipFixed = JSON.parse(JSON.stringify(reportSample)); lipFixed.walls[0] = {
 check('with the flush values the builder now produces, every one of those is exactly 0', JSON.stringify(lipOf(lipFixed)) === '{"bar":0,"side":0,"barEnd":0,"wallTop":0}', JSON.stringify(lipOf(lipFixed)));
 magnets = false;
 
-console.log(failed ? `\n${failed} FAILED` : '\nall passed');
-process.exit(failed ? 1 : 0);
+// ---- Copy JSON ----
+const button = (label) => created.find((e) => e.tag === 'button' && e.textContent === label);
+(async () => {
+  // on an http://192.168.x.x page there is no navigator.clipboard: it falls back to the copy command
+  sandbox.document.execCommand = (c) => c === 'copy';
+  await button('Copy JSON').onclick();
+  check('Copy JSON without navigator.clipboard (a non-https page) still copies, and says so', msgEl.textContent === 'Level JSON copied.', msgEl.textContent);
+  sandbox.document.execCommand = () => false;
+  await button('Copy JSON').onclick();
+  check('...and if even that fails, says how to copy by hand', /press Ctrl\/Cmd\+C/.test(msgEl.textContent), msgEl.textContent);
+  let copied = null;
+  sandbox.navigator.clipboard = { writeText: async (t) => { copied = t; } };
+  await button('Copy JSON').onclick();
+  check('with the clipboard API it copies exactly the JSON box', copied === out.value && copied.length > 0 && msgEl.textContent === 'Level JSON copied.');
+  delete sandbox.navigator.clipboard; delete sandbox.document.execCommand;
+
+  // ---- Save, and Start from... lists saved levels ----
+  const template = created.find((e) => e.tag === 'select' && e.ariaLabel === 'Start from a built-in or saved level');
+  const options = () => template.children.map((o) => `${o.value}=${o.textContent}`);
+  run('edit(() => { delete level.name; })');
+  button('Save').onclick();
+  check('Save with no name asks for one and saves nothing', /Name the level first/.test(msgEl.textContent) && !store.has('wizardball-levels'));
+  run('edit(() => { level.name = "Cave"; })');
+  const cave = run('level.walls.length');
+  button('Save').onclick();
+  check('Save stores it under its name in localStorage', JSON.parse(store.get('wizardball-levels')).map((l) => l.name).join() === 'Cave' && /Saved "Cave"/.test(msgEl.textContent), msgEl.textContent);
+  check('...and it shows up in Start from..., after the built-in levels', options().at(-1) === 's:Cave=Saved: Cave' && options()[1] === '0=Classic', options().join('|'));
+  run('edit(() => { level.walls.push({ x: 300, y: 300, w: 80, h: 24 }); })');
+  button('Save').onclick();
+  check('saving again under the same name replaces it (no duplicate)', JSON.parse(store.get('wizardball-levels')).length === 1 && JSON.parse(store.get('wizardball-levels'))[0].walls.length === cave + 1 && /Saved over "Cave"/.test(msgEl.textContent));
+  run('edit(() => { level.name = "Tower"; })'); button('Save').onclick();
+  check('a different name is a second saved level', options().filter((o) => o.startsWith('s:')).join('|') === 's:Cave=Saved: Cave|s:Tower=Saved: Tower');
+  template.value = '0'; template.onchange();
+  check('(starting from a built-in level still works)', run('level.name') === 'Classic');
+  template.value = 's:Cave'; template.onchange();
+  check('choosing a saved level loads it into the builder', run('level.name') === 'Cave' && run('level.walls.length') === cave + 1 && template.value === '');
+  key('z', { ctrlKey: true });
+  check('...as one undo step', run('level.name') === 'Classic');
+  // storage is a trust boundary: junk entries are skipped, the good ones still listed
+  store.set('wizardball-levels', JSON.stringify([{ name: 'Broken', walls: 'nope' }, ...JSON.parse(store.get('wizardball-levels')), 42]));
+  template.onfocus();
+  check('invalid saved entries are skipped, valid ones kept', options().filter((o) => o.startsWith('s:')).join('|') === 's:Cave=Saved: Cave|s:Tower=Saved: Tower', options().join('|'));
+  store.set('wizardball-levels', '{not json');
+  template.onfocus();
+  check('unreadable storage just means no saved levels (no crash)', !options().some((o) => o.startsWith('s:')));
+
+  console.log(failed ? `\n${failed} FAILED` : '\nall passed');
+  process.exit(failed ? 1 : 0);
+})();

@@ -6,6 +6,7 @@
 // The level in play is LEVEL (main.js). It can be one of the built-in DEFAULT_LEVELS, the level the builder last
 // saved, or one pasted in as JSON. Whatever the host picks is what joiners and watchers get.
 let pastedLevel = null;
+let savedLevels = readSavedLevels(); // the builder's Save button (level.js); re-read each time the title opens
 let levelLabel = levelName(LEVEL, 0); // what the lobby shows for the level in play
 
 const nameOf = (l, fallback) => (typeof l?.name === 'string' && l.name.trim() ? l.name.trim() : fallback);
@@ -13,6 +14,7 @@ const nameOf = (l, fallback) => (typeof l?.name === 'string' && l.name.trim() ? 
 function levelOptions() {
   const options = DEFAULT_LEVELS.map((l, i) => ({ value: `d${i}`, text: levelName(l, i) }));
   if (savedLevel) options.push({ value: 'custom', text: `Yours: ${nameOf(savedLevel, 'Untitled level')} (from the builder)` });
+  for (const l of savedLevels) options.push({ value: `s:${l.name}`, text: `Saved: ${l.name}` });
   if (pastedLevel) options.push({ value: 'pasted', text: `Pasted: ${nameOf(pastedLevel, 'Untitled level')}` });
   return options;
 }
@@ -32,6 +34,7 @@ function buildLevelOptions(selectValue) {
 function levelFor(value) {
   if (value === 'custom') return savedLevel;
   if (value === 'pasted') return pastedLevel;
+  if (value.startsWith('s:')) return savedLevels.find((l) => `s:${l.name}` === value);
   return DEFAULT_LEVELS[Number(value.slice(1))];
 }
 
@@ -53,7 +56,7 @@ const showLevel = () => { $('level-now').textContent = `Level: ${levelLabel}`; }
 $('level-select').onchange = () => {
   const value = $('level-select').value;
   const option = levelOptions().find((o) => o.value === value);
-  useLevel(levelFor(value), option.text.replace(/^(Yours|Pasted): /, '').replace(/ \(from the builder\)$/, ''));
+  useLevel(levelFor(value), option.text.replace(/^(Yours|Pasted|Saved): /, '').replace(/ \(from the builder\)$/, ''));
   levelMsg('');
 };
 
@@ -96,6 +99,7 @@ $('options-close').onclick = () => { if (dialog().close) dialog().close(); else 
 function openTitle() {
   menu.open = true;
   savedLevel = readSavedLevel(); // the builder may have saved a new one since we last looked
+  savedLevels = readSavedLevels();
   buildLevelOptions($('level-select').value || (LEVEL === savedLevel ? 'custom' : 'd0'));
   $('title').hidden = false;
   $('play-btn').focus();

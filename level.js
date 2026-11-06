@@ -2,45 +2,68 @@ const DEFAULT_LEVELS = [
 	{
 		name: "Classic",
 		walls: [
-			{ x: -100, y: 976, w: 2120, h: 24, grass: true }, // floor: extends past the edges so you don't fall off in a goal gap
-			{ x: 0, y: 0, w: 1920, h: 24 }, // ceiling
-			{ x: 0, y: 0, w: 24, h: 766 }, // left wall, gap above the floor = goal opening
-			{ x: 1896, y: 0, w: 24, h: 766 }, // right wall
-			{ x: 700, y: 700, w: 520, h: 24, grass: true }, // platform
+			{ x: 0, y: 734, w: 96, h: 2 },
+			{ x: 1824, y: 734, w: 96, h: 2 },
+			{ x: 1824, y: 430, w: 96, h: 2 },
+			{ x: -8, y: 430, w: 104, h: 2 },
+			{ x: 272, y: 22, w: 1384, h: 2 },
+			{ x: 264, y: 960, w: 1384, h: 2, grass: true },
+			{ x: 94, y: 184, w: 2, h: 248 },
+			{ x: 1822, y: 184, w: 2, h: 248 },
+			{ x: 1824, y: 736, w: 2, h: 56 },
+			{ x: 96, y: 736, w: 2, h: 56 },
 		],
-		ball: { x: 960, y: 400 },
+		ball: {
+			x: 960,
+			y: 400,
+		},
 		players: [
 			{
 				color: "#48f",
-				x: 140,
-				y: 928,
-				hud: { x: 40, y: 60 },
-				keys: { left: "KeyA", right: "KeyD", jump: "Space" },
+				x: 332,
+				y: 912,
+				hud: {
+					x: 32,
+					y: 164,
+				},
+				keys: {
+					left: "KeyA",
+					right: "KeyD",
+					jump: "Space",
+				},
 			},
 			{
 				color: "#f44",
-				x: 1748,
-				y: 928,
-				hud: { x: 1856, y: 60 },
-				keys: { left: "ArrowLeft", right: "ArrowRight", jump: "Enter" },
+				x: 1548,
+				y: 912,
+				hud: {
+					x: 1864,
+					y: 164,
+				},
+				keys: {
+					left: "ArrowLeft",
+					right: "ArrowRight",
+					jump: "Enter",
+				},
 			},
 		],
 		goals: [
-			// Extend off-screen so the ball is "inside" once it passes the gap.
-			{ owner: 0, x: 1896, y: 766, w: 224, h: 210, sparks: "left" }, // blue scores on the right
-			{ owner: 1, x: -200, y: 766, w: 224, h: 210, sparks: "right" }, // red scores on the left
+			{ owner: 0, x: 1888, y: 432, w: 48, h: 304, sparks: "left" },
+			{ owner: 1, x: -24, y: 432, w: 54, h: 304, sparks: "right" },
 		],
 		zones: [
-			// Narrow so they don't cover the player spawns.
-			{ x: 1796, y: 646, w: 100, h: 330 },
-			{ x: 24, y: 646, w: 100, h: 330 },
+			{ x: 1608, y: 392, w: 376, h: 376, shape: "circle" },
+			{ x: -64, y: 400, w: 376, h: 376, shape: "circle" },
 		],
-		// Ramps and quarter-pipes: a right triangle filling the box. `high` = which side is tall
-		// ('left' | 'right'); `curve: true` makes the surface a concave quarter-pipe instead of a straight ramp.
-		slopes: [],
+		slopes: [
+			{ x: 96, y: 768, w: 176, h: 192, high: "left", curve: true },
+			{ x: 1632, y: 784, w: 192, h: 176, high: "right", curve: true },
+			{ x: 1648, y: 24, w: 176, h: 192, high: "right", curve: true, ceiling: true },
+			{ x: 96, y: 24, w: 192, h: 176, high: "left", curve: true, ceiling: true },
+		],
 	},
 	{
-		name: "Simple",
+		name: "Rise and Shine",
 		walls: [
 			{ x: 104, y: 32, w: 1718, h: 2 },
 			{ x: 92, y: 34, w: 2, h: 926 },
@@ -48,8 +71,8 @@ const DEFAULT_LEVELS = [
 			{ x: 256, y: 968, w: 1408, h: 2, grass: true },
 		],
 		ball: {
-			x: 1008,
-			y: 304,
+			x: 960,
+			y: 376,
 		},
 		players: [
 			{
@@ -82,34 +105,18 @@ const DEFAULT_LEVELS = [
 			},
 		],
 		goals: [
-			{ owner: 0, x: 320, y: 328, w: 64, h: 64, shape: "circle" },
-			{ owner: 1, x: 1536, y: 336, w: 64, h: 64, shape: "circle" },
+			{ owner: 0, x: 320, y: 328, w: 72, h: 72, shape: "circle" },
+			{ owner: 1, x: 1528, y: 328, w: 72, h: 72, shape: "circle" },
 		],
 		zones: [
 			{ x: 192, y: 200, w: 328, h: 328, shape: "circle" },
 			{ x: 1400, y: 200, w: 328, h: 328, shape: "circle" },
 		],
 		slopes: [
-			{
-				x: 94,
-				y: 34,
-				w: 200,
-				h: 192,
-				high: "left",
-				curve: true,
-				ceiling: true,
-			},
+			{ x: 94, y: 34, w: 200, h: 192, high: "left", curve: true, ceiling: true },
 			{ x: 1624, y: 778, w: 200, h: 192, high: "right", curve: true },
 			{ x: 94, y: 776, w: 200, h: 192, high: "left", curve: true },
-			{
-				x: 1616,
-				y: 34,
-				w: 206,
-				h: 192,
-				high: "right",
-				curve: true,
-				ceiling: true,
-			},
+			{ x: 1616, y: 34, w: 206, h: 192, high: "right", curve: true, ceiling: true },
 		],
 	},
 	{
@@ -220,10 +227,7 @@ function grassBlades(width, seed) {
 // Height (world y) of slope s's surface at world x. u = 0 at the thin edge, 1 at the thick edge.
 // For a ceiling slope the solid is ABOVE this line; for a floor slope it is below it.
 function slopeY(s, x) {
-	const u = Math.max(
-		0,
-		Math.min(1, s.high === "right" ? (x - s.x) / s.w : (s.x + s.w - x) / s.w),
-	);
+	const u = Math.max(0, Math.min(1, s.high === "right" ? (x - s.x) / s.w : (s.x + s.w - x) / s.w));
 	const y = s.curve ? s.y + s.h * Math.sqrt(1 - u * u) : s.y + s.h * (1 - u);
 	return s.ceiling ? 2 * s.y + s.h - y : y; // a ceiling slope is the same shape flipped top-to-bottom
 }
@@ -235,8 +239,7 @@ function slopePoints(s) {
 	const n = s.curve ? 16 : 1;
 	const pts = [];
 	for (let i = 0; i <= n; i++) {
-		const x =
-			s.high === "right" ? s.x + (s.w * i) / n : s.x + s.w - (s.w * i) / n;
+		const x = s.high === "right" ? s.x + (s.w * i) / n : s.x + s.w - (s.w * i) / n;
 		pts.push({ x, y: slopeY(s, x) });
 	}
 	pts.push({
@@ -249,18 +252,14 @@ function slopePoints(s) {
 // Is world point (x, y) inside r? r is a box, or with `shape: 'circle'` the ellipse inscribed in the box
 // (a circle when the box is square). Used for slow-mo zones, goals, and by the builder to select them.
 function inShape(x, y, r) {
-	if (r.shape !== "circle")
-		return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+	if (r.shape !== "circle") return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 	const a = r.w / 2,
 		b = r.h / 2;
 	return ((x - r.x - a) / a) ** 2 + ((y - r.y - b) / b) ** 2 <= 1;
 }
 
 // A level's display name: its own `name`, or "Level N" by position.
-const levelName = (l, i = 0) =>
-	typeof l?.name === "string" && l.name.trim()
-		? l.name.trim()
-		: `Level ${i + 1}`;
+const levelName = (l, i = 0) => (typeof l?.name === "string" && l.name.trim() ? l.name.trim() : `Level ${i + 1}`);
 
 // Is (x, y) inside the closed polygon `pts` (even-odd rule)? Used to ask whether the ball's centre is IN a slope.
 function inPolygon(pts, x, y) {
@@ -268,9 +267,7 @@ function inPolygon(pts, x, y) {
 	for (let i = 0, j = pts.length - 1; i < pts.length; j = i++)
 		if (
 			pts[i].y > y !== pts[j].y > y &&
-			x <
-				((pts[j].x - pts[i].x) * (y - pts[i].y)) / (pts[j].y - pts[i].y) +
-					pts[i].x
+			x < ((pts[j].x - pts[i].x) * (y - pts[i].y)) / (pts[j].y - pts[i].y) + pts[i].x
 		)
 			inside = !inside;
 	return inside;
@@ -289,9 +286,7 @@ function polygonContact(pts, x, y) {
 		const ex = b.x - a.x,
 			ey = b.y - a.y;
 		const len2 = ex * ex + ey * ey;
-		const t = len2
-			? Math.max(0, Math.min(1, ((x - a.x) * ex + (y - a.y) * ey) / len2))
-			: 0;
+		const t = len2 ? Math.max(0, Math.min(1, ((x - a.x) * ex + (y - a.y) * ey) / len2)) : 0;
 		const cx = a.x + t * ex,
 			cy = a.y + t * ey;
 		const dist = Math.hypot(x - cx, y - cy);
@@ -328,38 +323,61 @@ function isValidLevel(l) {
 		(r.shape === undefined || r.shape === "circle");
 	return Boolean(
 		l &&
-			Array.isArray(l.walls) &&
-			l.walls.every(rect) &&
-			Array.isArray(l.zones) &&
-			l.zones.every(rect) &&
-			(l.slopes ?? []).every(
-				(s) =>
-					rect(s) &&
-					(s.high === "left" || s.high === "right") &&
-					(s.ceiling === undefined || typeof s.ceiling === "boolean"),
-			) && // optional: older levels have none
-			(l.name === undefined ||
-				(typeof l.name === "string" && l.name.length <= 40)) &&
-			Array.isArray(l.players) &&
-			l.players.length > 0 &&
-			l.players.every(
-				(p) =>
-					Number.isFinite(p.x) &&
-					Number.isFinite(p.y) &&
-					p.keys &&
-					p.color &&
-					Number.isFinite(p.hud?.x) &&
-					Number.isFinite(p.hud?.y),
-			) &&
-			Array.isArray(l.goals) &&
-			l.goals.every(
-				(g) =>
-					rect(g) &&
-					l.players[g.owner] &&
-					(g.sparks === undefined ||
-						["left", "right", "top", "bottom"].includes(g.sparks)),
-			) &&
-			Number.isFinite(l.ball?.x) &&
-			Number.isFinite(l.ball?.y),
+		Array.isArray(l.walls) &&
+		l.walls.every(rect) &&
+		Array.isArray(l.zones) &&
+		l.zones.every(rect) &&
+		(l.slopes ?? []).every(
+			(s) =>
+				rect(s) &&
+				(s.high === "left" || s.high === "right") &&
+				(s.ceiling === undefined || typeof s.ceiling === "boolean"),
+		) && // optional: older levels have none
+		(l.name === undefined || (typeof l.name === "string" && l.name.length <= 40)) &&
+		Array.isArray(l.players) &&
+		l.players.length > 0 &&
+		l.players.every(
+			(p) =>
+				Number.isFinite(p.x) &&
+				Number.isFinite(p.y) &&
+				p.keys &&
+				p.color &&
+				Number.isFinite(p.hud?.x) &&
+				Number.isFinite(p.hud?.y),
+		) &&
+		Array.isArray(l.goals) &&
+		l.goals.every(
+			(g) =>
+				rect(g) &&
+				l.players[g.owner] &&
+				(g.sparks === undefined || ["left", "right", "top", "bottom"].includes(g.sparks)),
+		) &&
+		Number.isFinite(l.ball?.x) &&
+		Number.isFinite(l.ball?.y),
 	);
+}
+
+// ---------- Saved levels ----------
+// The builder's Save button keeps levels in this browser's localStorage, as a list; each is found by its own `name`
+// (saving again under the same name replaces it). The game's level select and the builder's "Start from..." list them.
+// Trust boundary: storage can hold anything (an older version, another tab, a hand edit), so invalid ones are skipped.
+const SAVED_KEY = "wizardball-levels";
+function readSavedLevels() {
+	try {
+		const all = JSON.parse(localStorage.getItem(SAVED_KEY));
+		return Array.isArray(all)
+			? all.filter((l) => isValidLevel(l) && typeof l.name === "string" && l.name.trim())
+			: [];
+	} catch {
+		return [];
+	}
+}
+// Returns true if it replaced a saved level with the same name. Throws if storage is full or turned off.
+function saveLevel(level) {
+	const all = readSavedLevels();
+	const i = all.findIndex((l) => l.name === level.name);
+	if (i >= 0) all[i] = level;
+	else all.push(level);
+	localStorage.setItem(SAVED_KEY, JSON.stringify(all));
+	return i >= 0;
 }

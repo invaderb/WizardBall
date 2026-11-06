@@ -116,13 +116,13 @@
     </dialog>
     <p class="hint">Blue: A / D, Space &middot; Red: &larr; / &rarr;, Enter &middot; Esc: back to this menu</p>
   </div>
-  <script src="level.js"></script>
-  <script src="sprites.js"></script>
-  <script src="net.js"></script>
-  <script src="main.js"></script>
-  <!-- ?v=: the live host lets browsers cache scripts for 4 hours; bump it when a script changes in a way the server depends on -->
-  <script src="online.js?v=2"></script>
-  <script src="ai.js"></script>
-  <script src="title.js"></script>
+  <script src="level.js?v=4"></script>
+  <script src="sprites.js?v=4"></script>
+  <script src="net.js?v=4"></script>
+  <script src="main.js?v=4"></script>
+  <script src="online.js?v=4"></script>
+  <script src="ai.js?v=4"></script>
+  <script src="title.js?v=4"></script>
+  <!-- ?v=: the live host lets browsers cache scripts for 4 hours, and the scripts depend on each other, so every script tag on both pages (index.html, builder.html) carries the same number: bump it on all of them whenever you deploy a change -->
 </body>
 </html>
