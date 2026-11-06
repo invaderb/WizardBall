@@ -2,7 +2,8 @@
 // instead of exploding. Real level.js + sprites.js + main.js + online.js, recording canvas.
 const fs = require('fs'), vm = require('vm');
 const dir = require('path').join(__dirname, '..') + '/';
-const src = ['level.js', 'sprites.js', 'net.js', 'main.js', 'online.js'].map((f) => fs.readFileSync(dir + f, 'utf8')).join('\n');
+const { gameSource } = require('./test_arena');
+const src = gameSource(['level.js', 'sprites.js', 'net.js', 'main.js', 'online.js']); // the game, on the frozen test arena (tests/test_arena.js)
 
 function makeWorld() {
   const log = [];
@@ -104,8 +105,26 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
   check('afterwards: reset to spawn, standing, countdown running', (() => { const p = pos(0); return p.x === 140 && p.y === 928 && p.vx === 0 && run('round.hit') <= 0 && run('round.t') > 2; })(), JSON.stringify(pos(0)));
   const pose = (slot) => JSON.parse(run(`JSON.stringify(components.anim.get(${who(slot)}[0]))`));
   check('...and both players are back in their spawn pose for the countdown: standing (not tucked in a ball), facing the middle',
-    JSON.stringify(pose(0)) === JSON.stringify({ facing: 1, phase: 0, moving: false, air: false, vy: 0 })
-    && JSON.stringify(pose(1)) === JSON.stringify({ facing: -1, phase: 0, moving: false, air: false, vy: 0 }), JSON.stringify([pose(0), pose(1)]));
+    JSON.stringify(pose(0)) === JSON.stringify({ facing: 1, phase: 0, moving: false, air: false, vy: 0, slide: false })
+    && JSON.stringify(pose(1)) === JSON.stringify({ facing: -1, phase: 0, moving: false, air: false, vy: 0, slide: false }), JSON.stringify([pose(0), pose(1)]));
+}
+
+// ===================== the scorer keeps standing (not tucked into a ball) through the animation =====================
+// Through the real frame loop, so the goal happens mid-step and the systems after goalSystem (effectsSystem sets the
+// pose) run on it, as in the game.
+{
+  const w = makeWorld(), run = w.run;
+  run('menu.open = false; round.t = 0');
+  const who = (slot) => `[...query("pos","controls","vel","body","anim")].find(e => e[2].slot === ${slot})`;
+  run(`${who(1)}[1].x = 1500; ${who(1)}[1].y = 928;`); // red stands on the floor, well away from the ball
+  run('frame(10); frame(20);'); // settle: red is grounded
+  run('for (const [, p, v] of query("pos","vel","circle")) { p.x = 30; p.y = 900; v.x = -400; v.y = 0; }'); // rolling into red's goal (left)
+  for (let t = 30; t < 300 && run('round.hit') <= 0; t += 10) run(`frame(${t})`);
+  check('(a goal happened: blue is the victim)', run('round.hit') > 0 && run('round.beam.victims[0]') === run(`${who(0)}[0]`));
+  const poses = [];
+  for (let t = 300; t < 1500 && run('round.hit') > 0.05; t += 50) { run(`frame(${t})`); poses.push(run(`${who(1)}[5].air`)); }
+  check('the scorer, standing when it went in, stays standing (not tucked in a ball) for the whole animation', poses.length > 5 && poses.every((air) => air === false), JSON.stringify(poses));
+  check('...and is not spinning (the somersault is for jumps)', run(`components.spin.get(${who(1)}[0]).a`) === 0);
 }
 
 // ===================== rendering: it stays visible, topples, ignores the somersault =====================

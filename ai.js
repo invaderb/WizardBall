@@ -16,14 +16,14 @@
 // beatable. Hard is superhuman on purpose: it thinks every step and meets the ball where it will be.
 
 const SKILLS = {
-  easy: { reaction: 0.30, lookahead: 0, intercept: false, jumpChance: 0.6, awareness: 0.4, mistake: 0.12 },
-  normal: { reaction: 0.12, lookahead: 0.25, intercept: false, jumpChance: 0.85, awareness: 0.8, mistake: 0.03 },
-  hard: { reaction: 0, lookahead: 0, intercept: true, jumpChance: 1, awareness: 1, mistake: 0 },
+  easy: { reaction: 0.30, lookahead: 0, intercept: false, jumpChance: 0.6, awareness: 0.4, mistake: 0.12, slide: 0 },
+  normal: { reaction: 0.12, lookahead: 0.25, intercept: false, jumpChance: 0.85, awareness: 0.8, mistake: 0.03, slide: 0.3 },
+  hard: { reaction: 0, lookahead: 0, intercept: true, jumpChance: 1, awareness: 1, mistake: 0, slide: 1 },
 };
 
 const aiMem = {};
 function aiReset() {
-  Object.assign(aiMem, { clock: 0, nextThink: 0, left: false, right: false, jump: false, lastAirJump: -1, lastX: 0, lastDir: 0, branch: '', path: [] });
+  Object.assign(aiMem, { clock: 0, nextThink: 0, left: false, right: false, jump: false, lastAirJump: -1, lastX: 0, lastDir: 0, branch: '', path: [], route: null, tap: [] });
   buildNav(); // the level may have changed since the last game
 }
 
@@ -36,6 +36,11 @@ function aiInput(slot) {
     aiThink(slot, skill);
   }
   const input = { left: aiMem.left, right: aiMem.right, jump: aiMem.jump };
+  if (aiMem.tap.length) { // playing out a double tap (see wantsSlide): this step's left/right comes from the sequence
+    const t = aiMem.tap.shift();
+    input.left = t < 0;
+    input.right = t > 0;
+  }
   aiMem.jump = false; // a jump is a one-step edge, like a key press
   return input;
 }
@@ -47,7 +52,7 @@ function aiInput(slot) {
 // prefer walking to climbing (each air jump drops a bubble) and to hanging about in mid-air.
 const CELL = 24;
 const PLAYER = { w: 32, h: 48 };
-const nav = { cols: 0, rows: 0, open: new Uint8Array(0), floor: new Uint8Array(0) };
+const nav = { cols: 0, rows: 0, open: new Uint8Array(0), floor: new Uint8Array(0), walls: [], slopes: [] };
 
 function buildNav() {
   nav.cols = Math.floor((W - PLAYER.w) / CELL) + 1;
@@ -62,6 +67,18 @@ function buildNav() {
       && !slopes.some((s) => (s.ceiling ? ceilingPen(pos, PLAYER, s) : slopePen(pos, PLAYER, s)) > 0);
   }
   for (let k = 0; k < nav.open.length - nav.cols; k++) nav.floor[k] = nav.open[k] && !nav.open[k + nav.cols];
+
+  // For predicting the ball: the same solids as the game's centreInSolid(), collected once (they never move), so the
+  // ~180 probes a prediction makes are plain loops instead of entity queries. That took Hard's thinking from ~5ms a step to well under 1.
+  nav.walls = [...query('pos', 'box', 'solid')].map(([, p, b]) => ({ x0: p.x, y0: p.y, x1: p.x + b.w, y1: p.y + b.h }));
+  nav.slopes = slopes.map((s) => ({ pts: s.pts, x0: s.x, y0: s.y, x1: s.x + s.w, y1: s.y + s.h }));
+}
+
+// centreInSolid() (main.js) for a static level, fast: is (x, y) inside a wall or a slope?
+function solidAt(x, y) {
+  for (const r of nav.walls) if (x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1) return true;
+  for (const s of nav.slopes) if (x >= s.x0 && x <= s.x1 && y >= s.y0 && y <= s.y1 && inPolygon(s.pts, x, y)) return true;
+  return false;
 }
 
 // The open node nearest a box top-left of (x, y), or -1 if there's none close (e.g. wrapping round off-screen).
@@ -145,13 +162,44 @@ function findPath(from, to, avoid = null) {
 function goTo(bb, x, y, avoidR = 0) {
   const from = nodeAt(bb.pos.x, bb.pos.y), to = nodeAt(x - PLAYER.w / 2, y - PLAYER.h / 2);
   if (from < 0 || to < 0) { bb.dir = Math.sign(x - bb.mx); return; } // off the grid: just head that way
-  bb.path = findPath(from, to, avoidR ? { x: bb.bp.x, y: bb.bp.y, r: avoidR } : null);
+  // Hard thinks every step, but a route barely changes in 1/30s: reuse the last one if it's going to the same place and
+  // I'm still on it (from where I am now). A* was most of the AI's cost.
+  const r = aiMem.route;
+  const fresh = r && r.to === to && aiMem.clock - r.at < 1 / 30;
+  const along = !fresh ? -1 : from === r.from ? 0 : r.path.indexOf(from) + 1; // how far along it I am (-1 / 0 = not on it)
+  if (fresh && (from === r.from || along > 0)) {
+    bb.path = r.path.slice(along);
+  } else {
+    bb.path = findPath(from, to, avoidR ? { x: bb.bp.x, y: bb.bp.y, r: avoidR } : null);
+    aiMem.route = { from, to, at: aiMem.clock, path: bb.path };
+  }
   if (!bb.path.length) { bb.dir = from === to ? 0 : Math.sign(x - bb.mx); return; }
   // Aim two nodes along: steady enough not to dither, close enough not to cut a corner into a platform.
   const k = bb.path[Math.min(1, bb.path.length - 1)];
   const tx = (k % nav.cols) * CELL + PLAYER.w / 2, ty = Math.floor(k / nav.cols) * CELL + PLAYER.h / 2;
   bb.dir = Math.abs(tx - bb.mx) > 6 ? Math.sign(tx - bb.mx) : 0;
   if (ty < bb.my - 20 && (bb.body.grounded || bb.vel.y > -60)) bb.hop = true; // up: jump (again at the top of a jump, not while rising)
+}
+
+// Slide? A slide (a double tap: see controlSystem in main.js) covers ~270px at up to 900 px/s and can't be steered, so
+// it's worth it on a long flat run toward a spot well beyond where the slide ends: never INTO the ball. Ploughing into it
+// just shoves it along the floor (no aimed kick: measured, that cost Pongz 5 of its 6 goals) and carries me past it.
+// And never when I'm going ROUND the ball and it's low down in the way.
+const SLIDE_RUN = 12; // nodes (~290px, about a slide) of flat floor the route must run along, the way I'm heading
+const SLIDE_ROOM = 15; // nodes (~360px): the route must go on past where the slide ends
+function wantsSlide(bb) {
+  const b = bb.body;
+  if (!bb.dir || !b.grounded || b.slide > 0 || b.slideCool > 0 || bb.path.length < SLIDE_ROOM) return false;
+  const start = nodeAt(bb.pos.x, bb.pos.y);
+  if (start < 0) return false;
+  const row = Math.floor(start / nav.cols);
+  for (let n = 0; n < SLIDE_RUN; n++) {
+    const k = bb.path[n];
+    if (Math.floor(k / nav.cols) !== row || !nav.floor[k] || Math.sign((k % nav.cols) - (start % nav.cols)) !== bb.dir) return false;
+  }
+  const goingRound = bb.branch === 'get round' || bb.branch === 'defend: get back';
+  const ahead = (bb.bp.x - bb.mx) * bb.dir;
+  return !(goingRound && ahead > 0 && ahead < 350 && Math.abs(bb.bp.y - bb.my) < 120);
 }
 
 // ---------- What to do: the behaviour tree ----------
@@ -164,6 +212,8 @@ const action = (name, fn) => (bb) => { bb.branch = name; fn(bb); return true; };
 
 // Conditions
 // My goal is in danger: the ball is close to it, or on its way there, or the opponent has it in my half.
+// TODO: this only measures how close the ball is to a goal SIDEWAYS, so a goal the ball lands on (Floor is Lava: each
+// half of the floor is one) never looks threatened. Use where predictBall says it will land. (README: Computer opponent)
 function threatened(bb) {
   if (!bb.guard) return false;
   const toGoal = Math.sign(bb.guard.x - bb.bp.x) || 1; // which way the ball must travel to go in
@@ -192,6 +242,8 @@ function goRound(bb) {
 // Which way to kick the ball, as a unit vector. A kick leaves at about KICK px/s and falls under the same 900 px/s²
 // gravity as everything else, so when attacking and in range it's the low arc that lands in the goal; out of range,
 // or when clearing, it's a low shot along the way the ball should go (it rolls on from there).
+// TODO: when no kick can reach the goal (it's raised or floating: Rise and Shine), the low roll below just runs the ball
+// along the floor underneath it. Lift it instead: kick it up, follow it, kick again from below. (README: Computer opponent)
 const KICK = 550, GRAVITY = 900;
 function aimAt(bb) {
   const goal = bb.want === bb.d ? bb.target : null;
@@ -269,8 +321,8 @@ function predictBall(bp, bv, r) {
   let { x, y } = bp, vx = bv.x, vy = bv.y;
   for (let i = 1; i <= 90; i++) {
     vy += GRAVITY * dt;
-    if (centreInSolid(x + vx * dt + Math.sign(vx) * r, y)) vx *= -0.7; else x += vx * dt;
-    if (centreInSolid(x, y + vy * dt + Math.sign(vy) * r)) vy = Math.abs(vy) < 30 ? 0 : vy * -0.7; else y += vy * dt;
+    if (solidAt(x + vx * dt + Math.sign(vx) * r, y)) vx *= -0.7; else x += vx * dt;
+    if (solidAt(x, y + vy * dt + Math.sign(vy) * r)) vy = Math.abs(vy) < 30 ? 0 : vy * -0.7; else y += vy * dt;
     if (i % 2 === 0) out.push({ t: i * dt, x, y });
   }
   return out;
@@ -282,9 +334,12 @@ function aiThink(slot, skill) {
   TREE(bb);
   aiMem.branch = bb.branch;
   aiMem.path = bb.path;
+  // Slide along the way if it helps: let go, tap, let go, then the held direction below is the second press.
+  if (!aiMem.tap.length && wantsSlide(bb) && Math.random() < skill.slide) aiMem.tap = [0, 0, bb.dir, bb.dir, 0, 0];
 
   // Blocked by a wall or a ledge (wanted to move last time too, but hasn't): hop.
-  if (bb.dir !== 0 && aiMem.lastDir !== 0 && bb.body.grounded && Math.abs(bb.pos.x - aiMem.lastX) < 1) bb.hop = true;
+  // (Not while a double tap is playing out: its brief let-go stops me on purpose.)
+  if (!aiMem.tap.length && bb.dir !== 0 && aiMem.lastDir !== 0 && bb.body.grounded && Math.abs(bb.pos.x - aiMem.lastX) < 1) bb.hop = true;
   aiMem.lastX = bb.pos.x;
 
   if (bb.strike && Math.random() > skill.jumpChance) bb.strike = false; // a weaker player misses some chances

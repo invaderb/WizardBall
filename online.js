@@ -44,7 +44,7 @@ const r2 = (v) => Math.round(v * 100) / 100;
 function snapshot() {
   const players = [], ball = [], bubbles = [], particles = [];
   for (const [id, pos, spin, lives, anim] of query('pos', 'spin', 'lives', 'anim'))
-    players.push([id, r1(pos.x), r1(pos.y), r2(spin.a), lives.n, anim.facing, anim.moving ? 1 : 0, anim.air ? 1 : 0, r2(anim.phase), Math.round(anim.vy)]);
+    players.push([id, r1(pos.x), r1(pos.y), r2(spin.a), lives.n, anim.facing, anim.moving ? 1 : 0, anim.air ? 1 : 0, r2(anim.phase), Math.round(anim.vy), anim.slide ? 1 : 0]);
   for (const [id, pos] of query('pos', 'vel', 'circle')) ball.push([id, r1(pos.x), r1(pos.y)]); // bubbles have no vel
   for (const [id, pos, c, bubble, look] of query('pos', 'circle', 'bubble', 'look')) // components.bubble doesn't exist until the first air jump
     bubbles.push([id, r1(pos.x), r1(pos.y), c.r, look.color, r2(bubble.t / bubble.max)]); // how faded it is, 1 -> 0
@@ -76,11 +76,11 @@ function syncSet(rows, marker, build) {
 function applySnapshot(m) {
   if (m.seq <= lastSeq) return; // older than what we already show: ignore
   lastSeq = m.seq;
-  for (const [id, x, y, a, n, facing, moving, air, phase, vy] of m.players) {
+  for (const [id, x, y, a, n, facing, moving, air, phase, vy, slide] of m.players) {
     Object.assign(components.pos.get(id), { x, y });
     components.spin.get(id).a = a;
     components.lives.get(id).n = n;
-    Object.assign(components.anim.get(id), { facing, moving: Boolean(moving), air: Boolean(air), phase, vy }); // the sprite's pose
+    Object.assign(components.anim.get(id), { facing, moving: Boolean(moving), air: Boolean(air), phase, vy, slide: Boolean(slide) }); // the sprite's pose
   }
   for (const [id, x, y] of m.ball) Object.assign(components.pos.get(id), { x, y });
   syncSet(m.bubbles, 'bubble', ([, x, y, r, color, fade]) => ({ pos: { x, y }, circle: { r }, bubble: { solid: false, t: fade, max: 1 }, look: { color } })); // solidity only matters on the host

@@ -1,6 +1,7 @@
 const fs = require('fs'), vm = require('vm');
 const dir = require('path').join(__dirname, '..') + '/';
-const src = ['level.js', 'sprites.js', 'main.js'].map((f) => fs.readFileSync(dir + f, 'utf8')).join('\n');
+const { gameSource } = require('./test_arena');
+const src = gameSource(['level.js', 'sprites.js', 'main.js']); // the game, on the frozen test arena (tests/test_arena.js)
 const noop = new Proxy({}, { get: () => () => {}, set: () => true });
 const sb = { console, Math, JSON, Set, Map, Object, Boolean, Number, Array, performance: { now: () => 0 }, requestAnimationFrame: () => {},
   addEventListener: () => {}, localStorage: { getItem: () => null }, HTMLInputElement: class {}, document: { getElementById: () => ({ getContext: () => noop }), fonts: { load() {} } } };

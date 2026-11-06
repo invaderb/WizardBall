@@ -2,7 +2,8 @@
 // Runs the real level.js + builder.js with a stubbed browser, driving the same functions the UI calls.
 const fs = require('fs'), vm = require('vm');
 const dir = require('path').join(__dirname, '..') + '/';
-const src = fs.readFileSync(dir + 'level.js', 'utf8') + '\n' + fs.readFileSync(dir + 'sprites.js', 'utf8') + '\n' + fs.readFileSync(dir + 'builder.js', 'utf8');
+const { gameSource } = require('./test_arena');
+const src = gameSource(['level.js', 'sprites.js', 'builder.js']); // starts on the frozen test arena (tests/test_arena.js)
 
 const log = [];
 const noop = new Proxy({}, { get: (_, p) => (...a) => { log.push([p, ...a]); }, set: (_, p, v) => { log.push(['set', p, v]); return true; } });

@@ -3,7 +3,8 @@
 // the old behaviour put back in, to prove the tests would have caught it.
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const dir = path.join(__dirname, '..') + '/';
-const src = ['level.js', 'sprites.js', 'main.js'].map((f) => fs.readFileSync(dir + f, 'utf8')).join('\n');
+const { gameSource, TEST_ARENA, PIPES_ARENA } = require('./test_arena');
+const src = gameSource(['level.js', 'sprites.js', 'main.js']); // the game, on the frozen test arena (tests/test_arena.js)
 
 let failed = 0;
 const check = (name, ok, extra = '') => { if (!ok) failed++; console.log(ok ? 'PASS' : 'FAIL', name, extra); };
@@ -21,7 +22,7 @@ function makeWorld(levelJson) {
     globalThis.inSlope = (x, y) => polys().some((p) => inPolygon(p, x, y)); globalThis.inWall = (x, y) => centreInSolid(x, y) && !inSlope(x, y);`);
   return run;
 }
-const classic = JSON.parse(vm.runInContext('JSON.stringify(DEFAULT_LEVELS[0])', (() => { const c = vm.createContext({ console }); vm.runInContext(fs.readFileSync(dir + 'level.js', 'utf8'), c); return c; })()));
+const classic = JSON.parse(JSON.stringify(TEST_ARENA)); // the frozen test arena, not whatever the first built-in level is today
 const withSlope = (slope, walls = []) => JSON.stringify({ ...classic, walls: [...classic.walls.filter((w) => w.y !== 700), ...walls], slopes: [slope] });
 const ORIENTATIONS = [];
 for (const ceiling of [false, true]) for (const high of ['left', 'right']) for (const curve of [true, false])
@@ -148,7 +149,7 @@ function popScenario(label, levelJson, ballAt, bubbleAt, inSolid) {
 
 // ===================== fixed-seed fuzz of whole arenas, with bubble pops =====================
 {
-  const simple = JSON.parse(vm.runInContext('JSON.stringify(DEFAULT_LEVELS[1])', (() => { const c = vm.createContext({ console }); vm.runInContext(fs.readFileSync(dir + 'level.js', 'utf8'), c); return c; })()));
+  const simple = JSON.parse(JSON.stringify(PIPES_ARENA)); // the frozen original "Simple" (tests/test_arena.js)
   const ARENAS = [
     { name: 'Simple (four quarter-pipes + hairline walls)', level: simple, b: { x0: 90, x1: 1826, y0: 30, y1: 972 } },
     { name: 'Classic + ceiling pipe + flush hairlines', level: JSON.parse(withSlope({ x: 180, y: 180, w: 200, h: 192, high: 'left', curve: true, ceiling: true }, [{ x: 380, y: 178, w: 1148, h: 2 }, { x: 178, y: 372, w: 2, h: 468 }])), b: { x0: -2, x1: 1922, y0: -2, y1: 1002, gap: true } },

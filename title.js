@@ -137,6 +137,23 @@ addEventListener('keydown', (e) => {
   openTitle();
 });
 
+// Left / right arrow (or the arrow buttons beside "Level:") on the title screen: the previous / next level, from the
+// same list as Options (wrapping round), so you don't have to open Options to change it.
+function cycleLevel(step) {
+  const options = levelOptions();
+  const i = options.findIndex((o) => o.value === $('level-select').value);
+  $('level-select').value = options[(i + step + options.length) % options.length].value;
+  $('level-select').onchange();
+}
+$('level-prev').onclick = () => cycleLevel(-1);
+$('level-next').onclick = () => cycleLevel(1);
+addEventListener('keydown', (e) => {
+  if ((e.code !== 'ArrowLeft' && e.code !== 'ArrowRight') || !menu.open || $('title').hidden || dialog().open) return;
+  if (e.target instanceof HTMLInputElement) return; // typing in the room-code box: the arrows move the cursor (as in main.js)
+  e.preventDefault();
+  cycleLevel(e.code === 'ArrowRight' ? 1 : -1);
+});
+
 // Enter in the code box joins, so you don't have to reach for the mouse.
 $('code-in').addEventListener('keydown', (e) => { if (e.code === 'Enter') joinGame('play'); });
 

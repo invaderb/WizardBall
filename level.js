@@ -6,12 +6,12 @@ const DEFAULT_LEVELS = [
 			{ x: 1824, y: 734, w: 96, h: 2 },
 			{ x: 1824, y: 430, w: 96, h: 2 },
 			{ x: -8, y: 430, w: 104, h: 2 },
-			{ x: 272, y: 22, w: 1384, h: 2 },
+			{ x: 208, y: 22, w: 1512, h: 2 },
 			{ x: 264, y: 960, w: 1384, h: 2, grass: true },
 			{ x: 94, y: 184, w: 2, h: 248 },
 			{ x: 1822, y: 184, w: 2, h: 248 },
-			{ x: 1824, y: 736, w: 2, h: 56 },
-			{ x: 96, y: 736, w: 2, h: 56 },
+			{ x: 1824, y: 736, w: 2, h: 80 },
+			{ x: 96, y: 736, w: 2, h: 88 },
 		],
 		ball: {
 			x: 960,
@@ -180,6 +180,64 @@ const DEFAULT_LEVELS = [
 			{ x: -160, y: 488, w: 416, h: 416, shape: "circle" },
 		],
 		slopes: [],
+	},
+	{
+		name: "Floor is Lava",
+		walls: [
+			{ x: 0, y: 24, w: 1920, h: 2 },
+			{ x: 92, y: 190, w: 2, h: 770 },
+			{ x: 1822, y: 192, w: 2, h: 778 },
+			{ x: 256, y: 970, w: 1408, h: 2 },
+			{ x: 1822, y: 190, w: 98, h: 2, grass: true },
+			{ x: -6, y: 188, w: 98, h: 2, grass: true },
+			{ x: 480, y: 728, w: 960, h: 176, grass: true },
+		],
+		ball: {
+			x: 960,
+			y: 144,
+		},
+		players: [
+			{
+				color: "#48f",
+				x: 620,
+				y: 680,
+				hud: {
+					x: 32,
+					y: 300,
+				},
+				keys: {
+					left: "KeyA",
+					right: "KeyD",
+					jump: "Space",
+				},
+			},
+			{
+				color: "#f44",
+				x: 1268,
+				y: 680,
+				hud: {
+					x: 1864,
+					y: 300,
+				},
+				keys: {
+					left: "ArrowLeft",
+					right: "ArrowRight",
+					jump: "Enter",
+				},
+			},
+		],
+		goals: [
+			{ owner: 0, x: 964, y: 912, w: 858, h: 58, sparks: "top" },
+			{ owner: 1, x: 92, y: 912, w: 870, h: 58, sparks: "top" },
+		],
+		zones: [
+			{ x: 1120, y: 568, w: 688, h: 688, shape: "circle" },
+			{ x: 94, y: 568, w: 688, h: 688, shape: "circle" },
+		],
+		slopes: [
+			{ x: 1624, y: 780, w: 200, h: 192, high: "right", curve: true },
+			{ x: 94, y: 780, w: 200, h: 192, high: "left", curve: true },
+		],
 	},
 ];
 

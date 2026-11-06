@@ -125,7 +125,7 @@ check('the somersault rotates the whole sprite', w.log.some((c) => c[0] === 'rot
 set(1, 300, true); for (let i = 0; i < 10; i++) run('effectsSystem()');
 const snap = JSON.parse(run('JSON.stringify(snapshot())'));
 const row = snap.players.find((r) => r[5] === 1 && r[6] === 1);
-check('snapshot rows carry facing, moving, air, phase, vy', row && row.length === 10 && row[5] === 1 && row[6] === 1 && row[7] === 0 && row[8] > 0, JSON.stringify(row));
+check('snapshot rows carry facing, moving, air, phase, vy, slide', row && row.length === 11 && row[10] === 0 && row[5] === 1 && row[6] === 1 && row[7] === 0 && row[8] > 0, JSON.stringify(row));
 const g = makeWorld();
 g.run('levelReady = true');
 g.run(`applySnapshot(${JSON.stringify(snap)})`);

@@ -1,7 +1,8 @@
 // Circular slow-mo zones and goals, rounded wall corners, ceiling-type (rotated) slopes, and level selection by URL.
 const fs = require('fs'), vm = require('vm');
 const dir = require('path').join(__dirname, '..') + '/';
-const src = ['level.js', 'sprites.js', 'net.js', 'main.js', 'online.js'].map((f) => fs.readFileSync(dir + f, 'utf8')).join('\n');
+const { gameSource } = require('./test_arena');
+const src = gameSource(['level.js', 'sprites.js', 'net.js', 'main.js', 'online.js']); // the game, on the frozen test arena (tests/test_arena.js)
 
 function makeWorld({ search = '', saved = null } = {}) {
   const log = [];

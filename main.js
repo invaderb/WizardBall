@@ -4,6 +4,13 @@ const DT = 1 / 120; // fixed physics step, in seconds
 const MAX_BALL_SPEED = 1000;
 const BUBBLE_LIFE = 2.5; // seconds for a bubble to fade away
 const DEATH_TIME = 1.2; // seconds the death animation lasts
+// Running, and the slide: double-tap left or right on the ground for a burst of speed that eases back to a run.
+const RUN_SPEED = 450;
+const SLIDE_SPEED = 900; // at the start of a slide
+const SLIDE_TIME = 0.4; // seconds
+const DOUBLE_TAP = 0.25; // seconds between the two presses
+const SLIDE_COOLDOWN = 0.3; // seconds after one ends before the next can start (no chaining them across the arena)
+const NO_SLIDE = { slide: 0, slideDir: 1, slideCool: 0, held: 0, tapDir: 0, tapAge: 9 }; // a player's slide state at spawn / reset
 const GRASS = "#fff";
 
 // A "resource": global state that isn't tied to any entity. round.t > 0 = countdown, world frozen.
@@ -124,7 +131,35 @@ function controlSystem() {
 		"look",
 	)) {
 		const input = inputs[keys.slot];
-		vel.x = (input.right - input.left) * 450;
+		const held = input.right - input.left; // -1, 0 or 1
+
+		// Double tap: a fresh press in the same direction as a press less than DOUBLE_TAP ago, on the ground, starts a
+		// slide. Read from the inputs here (not the keyboard) so it works the same for a guest online and for the AI.
+		if (held !== 0 && held !== body.held) {
+			if (held === body.tapDir && body.tapAge < DOUBLE_TAP && body.grounded && body.slide <= 0 && body.slideCool <= 0) {
+				body.slide = SLIDE_TIME;
+				body.slideDir = held;
+			}
+			body.tapDir = held;
+			body.tapAge = 0;
+		}
+		body.held = held;
+		body.tapAge += DT;
+		if (body.slide > 0 && (input.jump || !body.grounded)) {
+			// jumping, or sliding off a ledge, ends it
+			body.slide = 0;
+			body.slideCool = SLIDE_COOLDOWN;
+		}
+		if (body.slide > 0) {
+			// the slide's direction is locked; its speed eases from SLIDE_SPEED back down to a run
+			vel.x = body.slideDir * (RUN_SPEED + (SLIDE_SPEED - RUN_SPEED) * (body.slide / SLIDE_TIME));
+			body.slide -= DT;
+			if (body.slide <= 0) body.slideCool = SLIDE_COOLDOWN;
+		} else {
+			body.slideCool -= DT;
+			vel.x = held * RUN_SPEED;
+		}
+
 		if (input.jump) {
 			if (!body.grounded)
 				placeBubble(body, pos, box, look.color); // air jump = bubble
@@ -509,6 +544,20 @@ function effectsSystem() {
 			anim.phase = (anim.phase + (Math.abs(vel.x) * DT) / 80) % 1; // one stride per ~80px
 		anim.air = !body.grounded;
 		anim.vy = vel.y;
+		anim.slide = body.slide > 0;
+		if (anim.slide) {
+			anim.facing = body.slideDir;
+			if (tick % 2 === 0) // dust kicked up behind the slide
+				emit(
+					pos.x + box.w / 2 - body.slideDir * 6,
+					pos.y + box.h - 2,
+					-body.slideDir * (40 + Math.random() * 80),
+					-30 - Math.random() * 70,
+					"#fff",
+					0.3 + Math.random() * 0.2,
+					400,
+				);
+		}
 	}
 }
 
@@ -649,7 +698,7 @@ function resetSystem() {
 	for (const [id] of query("particle")) despawn(id);
 	for (const [, spin] of query("spin")) spin.a = 0;
 	for (const [id] of query("bubble")) despawn(id);
-	for (const [, body] of query("body")) body.bubble = null;
+	for (const [, body] of query("body")) Object.assign(body, { bubble: null, ...NO_SLIDE });
 	for (const [, pos, vel, sp] of query("pos", "vel", "spawn")) {
 		pos.x = sp.x;
 		pos.y = sp.y;
@@ -659,7 +708,7 @@ function resetSystem() {
 	// The pose only updates during play, so without this a player would sit through the countdown still tucked
 	// in mid-jump (or facing wherever the goal caught them). Back to how they spawn: standing, facing the middle.
 	for (const [, anim, sp] of query("anim", "spawn"))
-		Object.assign(anim, { facing: sp.x < W / 2 ? 1 : -1, phase: 0, moving: false, air: false, vy: 0 });
+		Object.assign(anim, { facing: sp.x < W / 2 ? 1 : -1, phase: 0, moving: false, air: false, vy: 0, slide: false });
 }
 
 // Trigger zone: ball center inside a goal box = the goal's owner loses a life.
@@ -684,10 +733,12 @@ function goalSystem() {
 			round.hit = DEATH_TIME;
 			round.beam = { color: glook.color, x: bpos.x, y: bpos.y, victims };
 			clock.scale = 1;
-			for (const [, vel, body] of query("vel", "body")) {
-				vel.x = 0; // everyone stops where they are...
+			// Everyone stops where they are... (Not `grounded = false` as well: effectsSystem runs right after this step and
+			// would read that as airborne, freezing the scorer in the tucked jump pose for the whole animation. physicsSystem
+			// works grounded out afresh every step anyway.)
+			for (const [, vel] of query("vel", "body")) {
+				vel.x = 0;
 				vel.y = 0;
-				body.grounded = false;
 			}
 			for (const id of victims) {
 				// ...except the victims, who are thrown backwards: away from the way they were facing
@@ -784,7 +835,7 @@ function renderSystem() {
 			drawWizard(
 				ctx,
 				look.color,
-				dying ? { ...anim, air: false, moving: false, dead } : anim,
+				dying ? { ...anim, air: false, moving: false, slide: false, dead } : anim,
 				performance.now(),
 			);
 		} else if (circular) {
@@ -907,7 +958,8 @@ function loadLevel(level) {
 			vel: { x: 0, y: 0 },
 			spawn: { x: p.x, y: p.y },
 			box: { w: 32, h: 48 },
-			body: { grounded: false, bubble: null, slope: null },
+			// slide: seconds left of one (slideDir its direction); held / tapDir / tapAge spot a double tap
+			body: { grounded: false, bubble: null, slope: null, ...NO_SLIDE },
 			spin: { a: 0 },
 			anim: {
 				facing: p.x < W / 2 ? 1 : -1,
@@ -915,6 +967,7 @@ function loadLevel(level) {
 				moving: false,
 				air: false,
 				vy: 0,
+				slide: false,
 			}, // for the sprite: starts facing the middle
 			controls: { ...p.keys, slot },
 			look: { color: p.color },

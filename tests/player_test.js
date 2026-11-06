@@ -4,20 +4,21 @@
 // Direct scenario, a fast fuzz of that corner, a fixed-seed fuzz of a whole arena, and a mutant that puts the old code back.
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const dir = path.join(__dirname, '..') + '/';
+const { gameSource, PIPES_ARENA } = require('./test_arena');
 const files = ['level.js', 'sprites.js', 'main.js'];
-const realSrc = files.map((f) => fs.readFileSync(dir + f, 'utf8')).join('\n');
+const realSrc = gameSource(files); // the game, on the frozen test arena (tests/test_arena.js)
 
 let failed = 0;
 const check = (name, ok, extra = '') => { if (!ok) failed++; console.log(ok ? 'PASS' : 'FAIL', name, extra); };
 
-function makeWorld(levelName, source = realSrc) {
+function makeWorld(level, source = realSrc) {
   const noop = new Proxy({}, { get: () => () => {}, set: () => true });
   const sb = { console, structuredClone, Math, JSON, Set, Map, Object, Boolean, Number, Array, performance: { now: () => 0 }, requestAnimationFrame: () => {}, addEventListener: () => {},
     localStorage: { getItem: () => null }, HTMLInputElement: class {}, document: { getElementById: () => ({ getContext: () => noop }), fonts: { load() {} } } };
   vm.createContext(sb);
   vm.runInContext(source, sb);
   const run = (c) => vm.runInContext(c, sb);
-  run(`const lv = DEFAULT_LEVELS.find((l) => l.name === ${JSON.stringify(levelName)}); for (const m of Object.values(components)) m.clear(); nextId = 0; loadLevel(lv);
+  run(`const lv = ${JSON.stringify(level)}; for (const m of Object.values(components)) m.clear(); nextId = 0; loadLevel(lv);
     globalThis.P = [...query('pos','controls','vel','body')].find((e) => e[2].slot === 0);
     globalThis.put = (x, y, vx = 0, vy = 0) => { P[1].x = x; P[1].y = y; P[3].x = vx; P[3].y = vy; };
     globalThis.step = (dir, jump) => { inputs[0] = { left: dir < 0, right: dir > 0, jump: !!jump }; inputs[1] = { left: false, right: false, jump: false }; controlSystem(); physicsSystem(); particleSystem(); bubbleFadeSystem(); /* jump bursts and bubbles must age away as in the game, or every query walks thousands of them */ };
@@ -28,7 +29,7 @@ function makeWorld(levelName, source = realSrc) {
 
 // ===================== the exact scenario from the trace =====================
 {
-  const run = makeWorld('Simple');
+  const run = makeWorld(PIPES_ARENA);
   // top-right corner of the Simple arena: the ceiling quarter-pipe (1616,34, 206x192, thick end right) with the hairline bar y 32..34 above it.
   // The player is up against the curve, one step after being blocked from moving right (its head 0.1px under the surface), and taps jump.
   run('put(1630.4, 39.0, 0, 8); step(1, true);');
@@ -44,7 +45,7 @@ function makeWorld(levelName, source = realSrc) {
 // ===================== the same situation in the other corners and orientations =====================
 {
   // every corner of the Simple arena: the player jams itself into the corner with a held direction and repeated jumps
-  const run = makeWorld('Simple');
+  const run = makeWorld(PIPES_ARENA);
   const corners = [['top-left', 130, 60, -1], ['top-right', 1760, 60, 1], ['bottom-left', 140, 880, -1], ['bottom-right', 1740, 880, 1]];
   let bad = [];
   for (const [name, x, y, dir] of corners) {
@@ -73,7 +74,7 @@ function cornerFuzz(run, seed, trials) {
   return bad;
 }
 {
-  const run = makeWorld('Simple');
+  const run = makeWorld(PIPES_ARENA);
   const bad = cornerFuzz(run, 99, 300);
   check('fuzz: 300 players thrown around the top-right pipe/hairline corner (random moves, 12% jump taps): none ends inside the curve', bad === 0, `${bad}/300`);
 
@@ -81,7 +82,7 @@ function cornerFuzz(run, seed, trials) {
   const oldRule = realSrc.replace('if (pen !== null && pen > 0) {\n\t\t\t\t\t\tpos.y += pen;\n\t\t\t\t\t\tif (vel.y < 0) vel.y = 0;\n\t\t\t\t\t}', 'if (pen !== null && pen > 0 && vel.y < 0) {\n\t\t\t\t\t\tpos.y += pen;\n\t\t\t\t\t\tvel.y = 0;\n\t\t\t\t\t}');
   if (oldRule === realSrc) check('MUTANT could not be built (the ceiling code changed shape): update this test', false);
   else {
-    const mutantRun = makeWorld('Simple', oldRule);
+    const mutantRun = makeWorld(PIPES_ARENA, oldRule);
     const mutantBad = cornerFuzz(mutantRun, 99, 300);
     check('MUTANT (the old "only if moving up" rule): the very same fuzz DOES catch players stuck inside the curve, so the check above has teeth', mutantBad > 0, `${mutantBad}/300 stuck with the old rule`);
     mutantRun('put(1630.4, 39.0, 0, 8); step(1, true);');
@@ -91,7 +92,7 @@ function cornerFuzz(run, seed, trials) {
 
 // ===================== fixed-seed fuzz of the whole arena =====================
 {
-  const run = makeWorld('Simple');
+  const run = makeWorld(PIPES_ARENA);
   run(`globalThis.arenaTrial = (x, y, dirs, jumps) => { put(x, y, 0, 0); let last = [x, y]; for (let i = 0; i < dirs.length; i++) { step(dirs[i], jumps[i]);
     const px = P[1].x, py = P[1].y;
     if (insideCount(px, py) >= 2) return 'inside a slope at (' + px.toFixed(0) + ', ' + py.toFixed(0) + ')';

@@ -2,7 +2,8 @@
 // Runs the real level.js + sprites.js + main.js headless. (Ceiling-type slopes are in shapes_test.js.)
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const dir = path.join(__dirname, '..') + '/';
-const src = ['level.js', 'sprites.js', 'main.js'].map((f) => fs.readFileSync(dir + f, 'utf8')).join('\n');
+const { gameSource } = require('./test_arena');
+const src = gameSource(['level.js', 'sprites.js', 'main.js']); // the game, on the frozen test arena (tests/test_arena.js)
 
 let failed = 0;
 const check = (name, ok, extra = '') => { if (!ok) failed++; console.log(ok ? 'PASS' : 'FAIL', name, extra); };

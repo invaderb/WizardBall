@@ -16,9 +16,10 @@ function makeWorld({ search = '', saved = null, savedList = null, rooms = null, 
     open: false, showModal() { this.open = true; this.modal = true; }, close() { this.open = false; },
   });
   const fetched = [];
+  const winListeners = {}; // window.addEventListener (keydown etc.)
   const sandbox = {
     console, Math, JSON, Set, Map, Object, Boolean, Number, Array, Promise, setTimeout, URLSearchParams, AbortController, performance: { now: () => 0 },
-    requestAnimationFrame: () => {}, addEventListener: () => {}, HTMLInputElement: class {}, encodeURIComponent, TypeError,
+    requestAnimationFrame: () => {}, addEventListener: (t, f) => { (winListeners[t] ??= []).push(f); }, HTMLInputElement: class {}, encodeURIComponent, TypeError,
     localStorage: { getItem: (k) => (k === 'wizardball-levels' ? (savedList ? JSON.stringify(savedList) : null) : saved ? JSON.stringify(saved) : null) }, location: { search },
     navigator: clipboard ? { clipboard } : {},
     fetch: (url, opts) => {
@@ -33,7 +34,8 @@ function makeWorld({ search = '', saved = null, savedList = null, rooms = null, 
   for (const id of ['level-select', 'level-box', 'level-json', 'level-use-btn', 'level-paste-btn', 'level-copy-btn', 'level-msg', 'level-now', 'options-btn', 'options-dialog', 'options-close', 'public-cb', 'games', 'games-refresh', 'title', 'play-btn', 'ai-btn', 'ai-skill', 'host-btn', 'code-in', 'join-btn', 'watch-btn', 'room-code', 'online-status'])
     sandbox.document.getElementById(id); // the page has all of these from the start
   vm.runInContext(src, sandbox);
-  return { sandbox, els, fetched, run: (c) => vm.runInContext(c, sandbox) };
+  const key = (code, target = {}) => { const e = { code, target, prevented: false, preventDefault() { this.prevented = true; } }; for (const f of winListeners.keydown ?? []) f(e); return e; };
+  return { sandbox, els, fetched, key, run: (c) => vm.runInContext(c, sandbox) };
 }
 const flush = () => new Promise((r) => setTimeout(r, 20));
 let failed = 0;
@@ -131,6 +133,35 @@ const lastDefault = (w) => `d${w.run('DEFAULT_LEVELS.length') - 1}`; // the sele
     check('choosing one plays it (1 wall), labelled by its name alone', s.run('[...query("solid")].length') === 1 && s.run('levelLabel') === 'Tower' && s.run('LEVEL.name') === 'Tower', s.run('levelLabel'));
     s.run('openTitle()');
     check('reopening the title keeps it chosen', s.els['level-select'].value === 's:Tower' && s.run('LEVEL.name') === 'Tower');
+  }
+
+  // ===================== left / right arrows cycle the level =====================
+  {
+    const base = makeWorld();
+    const lv = JSON.parse(base.run('JSON.stringify({ ...DEFAULT_LEVELS[0], name: "Cave", walls: DEFAULT_LEVELS[0].walls.slice(0, 1) })'));
+    const w = makeWorld({ savedList: [lv] });
+    const sel = () => w.els['level-select'].value;
+    const n = w.run('DEFAULT_LEVELS.length');
+    const right = w.key('ArrowRight');
+    check('Right arrow on the title screen: the next level, and it is used (LEVEL, label, arena)', sel() === 'd1' && w.run('LEVEL === DEFAULT_LEVELS[1]') && w.els['level-now'].textContent === `Level: ${w.run('levelLabel')}` && right.prevented, sel());
+    w.key('ArrowLeft'); w.key('ArrowLeft');
+    check('Left arrow goes back, and wraps round from the first level to the last (here a saved one)', sel() === 's:Cave' && w.run('LEVEL.name') === 'Cave' && w.run('[...query("solid")].length') === 1, sel());
+    w.key('ArrowRight');
+    check('...and Right wraps from the last back to the first', sel() === 'd0');
+    for (let i = 0; i < n; i++) w.key('ArrowRight');
+    check(`the saved level is in the cycle too (${n} built-in + 1 saved)`, sel() === 's:Cave', sel());
+    w.els['level-next'].onclick();
+    check('the arrow buttons beside the label do the same', sel() === 'd0');
+    w.els['level-prev'].onclick();
+    check('...both ways', sel() === 's:Cave');
+    w.els['options-dialog'].open = true; w.key('ArrowRight');
+    check('not while the Options dialog is open (its own list takes the arrows)', sel() === 's:Cave');
+    w.els['options-dialog'].open = false;
+    const typing = w.key('ArrowRight', new w.sandbox.HTMLInputElement());
+    check('not while typing in a box (the room code): the arrow moves the cursor there', sel() === 's:Cave' && !typing.prevented);
+    w.run('menu.open = false; closeTitle()');
+    w.key('ArrowRight');
+    check('not during a game (the arrows are a player\'s keys)', sel() === 's:Cave' && w.run('LEVEL.name') === 'Cave');
   }
 
   // ===================== paste + copy JSON =====================

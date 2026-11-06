@@ -6,7 +6,6 @@ Designed to be a simple one-button, one-joystick game packed with an expressive 
 
 want to look into using webrtc for peer to peer to allow for online gameplay
 
-
 each player sprite has a few animations depending on the playders action
 - running sprite running animation
 - jumping
@@ -28,8 +27,7 @@ lightnign stuns
 rain - slows down
 fog - hard to see
 
-- map scaling
-small mediunm large map for multiplayer games
+- map scaling: small / medium / large maps for multiplayer games (see Team play in the TODO list)
 
 ## TODO
 
@@ -56,6 +54,28 @@ small mediunm large map for multiplayer games
 - [x] Start from a built-in level, and name your level (the name appears in the level select and Open games)
 - [ ] Select and move several objects at once
 - [ ] Change a goal's owner without editing the JSON
+
+### Team play: 2v2, up to 4v4
+Today a game is exactly two players, one per goal; these are the pieces that assume it.
+- [ ] Teams in the level format: each player gets a `team`, and a goal's `owner` becomes a team rather than a player index (`level.js` `isValidLevel`, `goalSystem` in `main.js`)
+- [ ] Lives and the HUD per team (or per player), and "who wins" when a team is out
+- [ ] Online: more than one player slot per room (the host takes a single `play` peer now: `acceptJoin` in `online.js`), each sending its own input; the lobby's player count is capped at 2 (`cleanInfo` in `server.js`)
+- [ ] Local play with more people: more key sets, or gamepads (two key sets now)
+- [ ] AI teammates and opponents to fill empty slots, team-aware so they spread out instead of all chasing the ball (`ai.js` assumes one opponent)
+- [ ] Map scaling: small / medium / large arenas to fit more players. The arena is a fixed 1920 x 1000 (`W` / `H` in `main.js`): levels need their own size, the game a camera or scale-to-fit, the builder a size picker, and the AI's nav grid sizing from the level
+- [ ] Builder: place a spawn per player per team, and pick the arena size
+
+### Controllers
+Every way of playing (one keyboard, vs the computer, online) reads its input as `{ left, right, jump }` from `localInput()` / `fillInputs()` in `main.js`, so a controller only has to produce that; the slide (double tap) then works on it for free.
+- [ ] Gamepad support via the browser's Gamepad API: poll `navigator.getGamepads()` each frame; stick (with a deadzone) or d-pad to move, a button to jump (a press, not a hold, like the keyboard's `pressed`)
+- [ ] One controller per local player, and controllers alongside keyboards (pairs with Team play's "more key sets, or gamepads")
+- [ ] Mapping screen in Options: press the button you want for jump / left / right, per player, saved in this browser (localStorage, like saved levels). Keyboard keys too: today they live in each level's JSON (`players[].keys`)
+- [ ] Drive the title screen and Options with a controller (move between buttons, A to press, B to go back), and R / rematch on a button
+
+### Computer opponent (`ai.js`)
+`tests/ai_test.js` plays the Hard AI on every built-in level; levels it can't play yet show up as `TODO` lines when you run the tests.
+- [ ] Lift the ball in stages toward raised or floating goals (Rise and Shine's mid-air circles). One kick tops out at ~170px of height, so it needs a run of air kicks under the ball; today, with no kick that reaches the goal, it just rolls the ball along the floor (`aimAt`)
+- [ ] See a ball about to LAND on its own goal as a threat (Floor is Lava, where each half of the floor is a goal). Danger is only judged by how close the ball is to a goal sideways (`threatened`), so it concedes own goals there
 
 ### Online play (WebRTC, peer to peer)
 - [x] Step 1: connect two browsers with a copy/paste handshake and measure ping (`net.html`)

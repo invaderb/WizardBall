@@ -68,7 +68,9 @@
     <h1>WizardBall</h1>
     <div id="menu">
       <div class="level-row">
+        <button type="button" id="level-prev" class="small" aria-label="Previous level" title="Previous level (Left arrow)">&#9664;</button>
         <span id="level-now"></span>
+        <button type="button" id="level-next" class="small" aria-label="Next level" title="Next level (Right arrow)">&#9654;</button>
         <button type="button" id="options-btn" class="small">Options</button>
       </div>
       <button type="button" id="play-btn">Play</button>
@@ -116,13 +118,13 @@
     </dialog>
     <p class="hint">Blue: A / D, Space &middot; Red: &larr; / &rarr;, Enter &middot; Esc: back to this menu</p>
   </div>
-  <script src="level.js?v=4"></script>
-  <script src="sprites.js?v=4"></script>
-  <script src="net.js?v=4"></script>
-  <script src="main.js?v=4"></script>
-  <script src="online.js?v=4"></script>
-  <script src="ai.js?v=4"></script>
-  <script src="title.js?v=4"></script>
+  <script src="level.js?v=1"></script>
+  <script src="sprites.js?v=1"></script>
+  <script src="net.js?v=1"></script>
+  <script src="main.js?v=1"></script>
+  <script src="online.js?v=1"></script>
+  <script src="ai.js?v=1"></script>
+  <script src="title.js?v=1"></script>
   <!-- ?v=: the live host lets browsers cache scripts for 4 hours, and the scripts depend on each other, so every script tag on both pages (index.html, builder.html) carries the same number: bump it on all of them whenever you deploy a change -->
 </body>
 </html>

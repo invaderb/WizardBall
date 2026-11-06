@@ -13,7 +13,7 @@ const filter = process.argv[2];
 const files = fs.readdirSync(__dirname).filter((f) => f.endsWith('_test.js') && (!filter || f.includes(filter))).sort();
 if (!files.length) { console.log(`No tests match "${filter}".`); process.exit(1); }
 
-let totalPass = 0, totalFail = 0, crashed = 0;
+let totalPass = 0, totalFail = 0, totalTodo = 0, crashed = 0;
 const started = Date.now();
 for (const f of files) {
   const t0 = Date.now();
@@ -21,12 +21,15 @@ for (const f of files) {
   const lines = (r.stdout ?? '').split('\n');
   const pass = lines.filter((l) => l.startsWith('PASS')).length;
   const fail = lines.filter((l) => l.startsWith('FAIL'));
+  const todo = lines.filter((l) => l.startsWith('TODO')); // known gaps: shown, but not failures
   const bad = r.status !== 0 && !fail.length; // crashed or timed out without reporting a failed check
   totalPass += pass; totalFail += fail.length; if (bad) crashed++;
   const mark = fail.length || bad ? 'FAIL' : ' ok ';
   console.log(`${mark}  ${f.padEnd(26)} ${String(pass).padStart(3)} passed${fail.length ? `, ${fail.length} failed` : ''}   (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
   for (const l of fail) console.log(`        ${l}`);
+  for (const l of todo) console.log(`        ${l}`);
+  totalTodo += todo.length;
   if (bad) console.log(`        did not finish cleanly (exit ${r.status}${r.signal ? `, ${r.signal}` : ''}):\n${(r.stderr || r.stdout).split('\n').slice(-8).map((x) => `        ${x}`).join('\n')}`);
 }
-console.log(`\n${totalPass} checks passed, ${totalFail} failed${crashed ? `, ${crashed} test file(s) crashed` : ''} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+console.log(`\n${totalPass} checks passed, ${totalFail} failed${totalTodo ? `, ${totalTodo} TODO (known gaps, see README)` : ''}${crashed ? `, ${crashed} test file(s) crashed` : ''} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
 process.exit(totalFail || crashed ? 1 : 0);

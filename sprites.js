@@ -2,11 +2,12 @@
 // CENTER of the 32 x 48 hitbox, so the game's somersault (ctx.rotate around that center) just works.
 // Shared by the game and the level builder.
 //
-// `pose` is the game's `anim` component: { facing: 1 | -1, moving, air, phase (0..1 run cycle), vy }.
+// `pose` is the game's `anim` component: { facing: 1 | -1, moving, air, phase (0..1 run cycle), vy, slide }.
 // `time` only drives the idle breathing, so it can come from the wall clock: it never affects gameplay.
 //
 // The body is filled black with an outline (white for everyone, or the player's color: see WIZARD_OUTLINE), so it hides whatever is behind it (bubbles, grass).
-// Standing and running it's a full wizard; in the air (when it somersaults) it curls into a tight ball.
+// Standing and running it's a full wizard; in the air (when it somersaults) it curls into a tight ball; sliding
+// (a double tap on the ground) it leans back with its feet out in front.
 // With `pose.dead` (0 -> 1 through the death animation) it arches backward, red-outlined, and topples over.
 
 // Outline color for every wizard. Set to null to outline each one in its player's color instead.
@@ -22,7 +23,7 @@ function drawWizard(ctx, color, pose, time = 0) {
   const swing = pose.moving ? Math.sin(cycle) : 0; // -1..1 through the run cycle
   const fall = pose.air ? Math.max(-1, Math.min(1, pose.vy / 600)) : 0; // -1 rising ... +1 falling
   const dead = pose.dead || 0;
-  const bob = pose.moving || pose.air || dead > 0 ? 0 : Math.sin(time / 350) * 1.2; // idle breathing
+  const bob = pose.moving || pose.air || pose.slide || dead > 0 ? 0 : Math.sin(time / 350) * 1.2; // idle breathing
 
   ctx.save();
   if (dead > 0) { // falling over backwards, pivoting on the feet (the bottom of the hitbox): slowly at first, then faster
@@ -108,6 +109,31 @@ function drawWizard(ctx, color, pose, time = 0) {
     ctx.arc(f * 4, -7.5, 1.1, 0, Math.PI * 2); // the eye shows which way it's facing
     ctx.fill();
     hat(-11, 6.5, -f * 7, -19 - fall * 2);
+  } else if (pose.slide) {
+    // Sliding feet first: leaning back on one hand, legs out in front along the ground, hat blown back.
+    ctx.beginPath(); // the robe, stretched from the shoulders (back and up) to a hem along the ground
+    ctx.moveTo(f * -13, 4);
+    ctx.lineTo(f * -5, 1);
+    ctx.lineTo(f * 7, 15);
+    ctx.lineTo(f * 12, 21);
+    ctx.lineTo(f * -9, 21);
+    ctx.closePath();
+    solid();
+    foot(f * 16, 22);
+    foot(f * 11, 23);
+    ctx.beginPath(); // the back arm, its hand on the ground
+    ctx.moveTo(f * -9, 7);
+    ctx.lineTo(f * -16, 21);
+    ctx.stroke();
+    circle(f * -12, -4, 5.5);
+    ctx.beginPath();
+    ctx.arc(f * -9, -4.5, 1.1, 0, Math.PI * 2); // the eye still looks the way it's going
+    ctx.fill();
+    ctx.save(); // the hat, tipped back about the head and streaming out behind
+    ctx.translate(f * -12, -4);
+    ctx.rotate(-f * 0.4);
+    hat(-4, 9, -f * 10, -17);
+    ctx.restore();
   } else {
     // Robe: a trapezoid whose hem sways as you run.
     const hem = swing * 2.5;
