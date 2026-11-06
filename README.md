@@ -74,7 +74,7 @@ Every way of playing (one keyboard, vs the computer, online) reads its input as 
 
 ### Computer opponent (`ai.js`)
 `tests/ai_test.js` plays the Hard AI on every built-in level; levels it can't play yet show up as `TODO` lines when you run the tests.
-- [ ] Lift the ball in stages toward raised or floating goals (Rise and Shine's mid-air circles). One kick tops out at ~170px of height, so it needs a run of air kicks under the ball; today, with no kick that reaches the goal, it just rolls the ball along the floor (`aimAt`)
+- [ ] Lift the ball in stages toward raised or floating goals (Classic's goals up the side walls, Rise and Shine's mid-air circles). One kick tops out at ~170px of height, so it needs a run of air kicks under the ball; today, with no kick that reaches the goal, it just rolls the ball along the floor (`aimAt`)
 - [ ] See a ball about to LAND on its own goal as a threat (Floor is Lava, where each half of the floor is a goal). Danger is only judged by how close the ball is to a goal sideways (`threatened`), so it concedes own goals there
 
 ### Online play (WebRTC, peer to peer)

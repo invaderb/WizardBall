@@ -321,6 +321,8 @@ function predictBall(bp, bv, r) {
   let { x, y } = bp, vx = bv.x, vy = bv.y;
   for (let i = 1; i <= 90; i++) {
     vy += GRAVITY * dt;
+    const sp = Math.hypot(vx, vy);
+    if (sp > MAX_BALL_SPEED) { vx *= MAX_BALL_SPEED / sp; vy *= MAX_BALL_SPEED / sp; } // the ball's speed cap, as in ballSystem
     if (solidAt(x + vx * dt + Math.sign(vx) * r, y)) vx *= -0.7; else x += vx * dt;
     if (solidAt(x, y + vy * dt + Math.sign(vy) * r)) vy = Math.abs(vy) < 30 ? 0 : vy * -0.7; else y += vy * dt;
     if (i % 2 === 0) out.push({ t: i * dt, x, y });

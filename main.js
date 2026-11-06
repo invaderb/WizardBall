@@ -2,6 +2,9 @@ const W = 1920,
 	H = 1000;
 const DT = 1 / 120; // fixed physics step, in seconds
 const MAX_BALL_SPEED = 1000;
+// Players' terminal velocity. Without one, falling through an open bottom (which warps you back to the top) speeds you
+// up forever, until you move further in a step than you are tall and drop straight through floors.
+const MAX_FALL = 1000;
 const BUBBLE_LIFE = 2.5; // seconds for a bubble to fade away
 const DEATH_TIME = 1.2; // seconds the death animation lasts
 // Running, and the slide: double-tap left or right on the ground for a burst of speed that eases back to a run.
@@ -220,24 +223,64 @@ function ceilingPen(pos, box, s) {
 	return slopeY(s, xp) - pos.y;
 }
 
+// Out of a wall along one axis: back the way we came (moved > 0: to its near side), or if we didn't move along this
+// axis (wrapped round the screen into it, or spawned in it), the shortest way out.
+function pushOut(moved, at, size, wallAt, wallSize) {
+	const before = wallAt - size, after = wallAt + wallSize;
+	if (moved > 0) return before;
+	if (moved < 0) return after;
+	return at - before < after - at ? before : after;
+}
+
+// Would a box of this size at (x, y) be inside a wall or a slope?
+function blockedAt(x, y, box) {
+	const at = { x, y };
+	for (const [, sp, sb] of query("pos", "box", "solid")) if (overlaps(at, box, sp, sb)) return true;
+	for (const [, s] of query("slope")) if ((s.ceiling ? ceilingPen(at, box, s) : slopePen(at, box, s)) > 0) return true;
+	return false;
+}
+
+// Where you'd come out warping through a side edge to x: at height y, or stepped up onto the far side's floor if that's
+// at most a step higher (MAX_STEP, the same bump you can walk up). The two sides of a level are rarely lined up to
+// the pixel (Pongz's top corners are 8px apart), and walking off one ledge should still land you on the other.
+// null = no room there (a wall at head height, say): that edge is a wall.
+function warpY(x, y, box) {
+	for (let up = 0; up <= MAX_STEP; up++) if (!blockedAt(x, y - up, box)) return y - up;
+	return null;
+}
+
 function physicsSystem() {
 	for (const [, pos, vel, box, body] of query("pos", "vel", "box", "body")) {
-		vel.y += 900 * DT; // gravity
+		vel.y = Math.min(vel.y + 900 * DT, MAX_FALL); // gravity, up to a terminal velocity
 		body.grounded = false;
 		const prevSlope = body.slope; // the slope we were standing on last step, if any
 		body.slope = null;
 
-		pos.x += vel.x * DT;
+		// Which side of a wall to push out to comes from how we MOVED this step (dx), not vel.x: the first wall we bump
+		// zeroes vel.x, and where two walls are stacked (a hairline against a shelf's end) the second used to read that 0
+		// as "moving left" and push us out of its far side: straight through it and out of the arena.
+		const x0 = pos.x,
+			dx = vel.x * DT;
+		pos.x += dx;
 		for (const [, sp, sb] of query("pos", "box", "solid"))
 			if (overlaps(pos, box, sp, sb)) {
-				pos.x = vel.x > 0 ? sp.x - box.w : sp.x + sb.w;
+				pos.x = pushOut(dx, pos.x, box.w, sp.x, sb.w);
 				vel.x = 0;
 			}
+		// Only warp through a side edge (see the end) if there's room where you'd come out. If the far side is walled off
+		// there (a wall running past the edge of the screen), this edge is a wall instead: no warping INTO that wall.
+		if (pos.x + box.w > W && warpY(-box.w, pos.y, box) === null) {
+			pos.x = W - box.w;
+			vel.x = 0;
+		} else if (pos.x < 0 && warpY(W, pos.y, box) === null) {
+			pos.x = 0;
+			vel.x = 0;
+		}
 		for (const [, s] of query("slope")) {
 			if (s.ceiling) {
 				// Walking into a ceiling slope (or its thick end) is like walking into a wall: no stepping up or down it.
 				if ((ceilingPen(pos, box, s) ?? 0) > 0) {
-					pos.x -= vel.x * DT;
+					pos.x = x0; // back where this step started (not "minus vel.x": a wall above may have zeroed that)
 					vel.x = 0;
 				}
 				continue;
@@ -252,7 +295,7 @@ function physicsSystem() {
 				continue;
 			}
 			if (pen > MAX_STEP) {
-				pos.x -= vel.x * DT;
+				pos.x = x0; // back where this step started (see dx above)
 				vel.x = 0;
 			} // too steep (e.g. the tall face): a wall
 			else if (pen > 0)
@@ -264,10 +307,20 @@ function physicsSystem() {
 		pos.y += vel.y * DT;
 		for (const [, sp, sb] of query("pos", "box", "solid"))
 			if (overlaps(pos, box, sp, sb)) {
-				if (vel.y > 0) body.grounded = true;
-				pos.y = vel.y > 0 ? sp.y - box.h : sp.y + sb.h;
+				// as for x: decide by how we moved (vyMove), since the first wall we bump zeroes vel.y
+				pos.y = pushOut(vyMove, pos.y, box.h, sp.y, sb.h);
+				if (pos.y + box.h <= sp.y) body.grounded = true; // pushed out on TOP of it: standing
 				vel.y = 0;
 			}
+		// The same for the top and bottom edges: no dropping out of the bottom into a wall at the top.
+		if (pos.y + box.h > H && blockedAt(pos.x, -box.h, box)) {
+			pos.y = H - box.h;
+			vel.y = 0;
+			body.grounded = true;
+		} else if (pos.y < 0 && blockedAt(pos.x, H, box)) {
+			pos.y = 0;
+			vel.y = 0;
+		}
 		for (const [, s] of query("slope")) {
 			if (s.ceiling) {
 				const prevFeet = pos.y + box.h - vyMove * DT;
@@ -310,9 +363,15 @@ function physicsSystem() {
 			} // landed / standing
 		}
 
-		// Walk fully out of one goal gap and you come out of the other side.
-		if (pos.x + box.w < 0) pos.x = W;
-		else if (pos.x > W) pos.x = -box.w;
+		// Walk fully out of one goal gap and you come out of the other side. (Checked again here, as the vertical move
+		// since the edge check above can bring you level with a wall on the far side: then stop at this edge instead.)
+		if (pos.x + box.w < 0) {
+			const y = warpY(W, pos.y, box);
+			if (y === null) { pos.x = 0; vel.x = 0; } else { pos.x = W; pos.y = y; }
+		} else if (pos.x > W) {
+			const y = warpY(-box.w, pos.y, box);
+			if (y === null) { pos.x = W - box.w; vel.x = 0; } else { pos.x = -box.w; pos.y = y; }
+		}
 		// ...and the same up and down: fall out of an open bottom and you drop back in from the top.
 		if (pos.y + box.h < 0) pos.y = H;
 		else if (pos.y > H) pos.y = -box.h;

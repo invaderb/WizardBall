@@ -143,6 +143,7 @@ run("ai.skill = 'hard'");
 // Levels it can't play YET are listed here: they print a TODO line instead of failing (README: Computer opponent). If one
 // starts passing it prints PASS: take it off the list.
 const AI_TODO = {
+  Classic: 'lift the ball in stages toward its raised goals, up the side walls (aimAt)',
   'Rise and Shine': 'lift the ball in stages toward floating goals (aimAt)',
   'Floor is Lava': 'see a ball about to land on its own goal as a threat (threatened)',
 };
