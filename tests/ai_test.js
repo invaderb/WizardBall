@@ -56,8 +56,8 @@ function situation(redX, ballX, ballY = 940, ballVx = 0) {
   return run(`(() => {
     const red = [...query('pos', 'vel', 'controls')].find((e) => e[3].slot === 1);
     const blue = [...query('pos', 'vel', 'controls')].find((e) => e[3].slot === 0);
-    Object.assign(red[1], { x: ${redX} - 16, y: 928 }); Object.assign(red[2], { x: 0, y: 0 });
-    Object.assign(blue[1], { x: 140, y: 928 });
+    Object.assign(red[1], { x: ${redX} - 16, y: 976 - PLAYER.h }); Object.assign(red[2], { x: 0, y: 0 });
+    Object.assign(blue[1], { x: 140, y: 976 - PLAYER.h });
     const [, bp, bv] = [...query('pos', 'vel', 'circle')][0];
     Object.assign(bp, { x: ${ballX}, y: ${ballY} }); Object.assign(bv, { x: ${ballVx}, y: 0 });
     physicsSystem(); // so it is standing (grounded)

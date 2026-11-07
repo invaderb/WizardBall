@@ -51,20 +51,22 @@ function aiInput(slot) {
 // Air jumps are unlimited, so ANY open node next to another can be reached; the costs below are what make it
 // prefer walking to climbing (each air jump drops a bubble) and to hanging about in mid-air.
 const CELL = 24;
-const PLAYER = { w: 32, h: 48 };
+// shortcut: a 48-tall box, two whole cells, so standing spots line up with the grid; it misses the top few px of a
+// taller player (PLAYER.h), so a gap that is only just too low can look open. Upgrade if the AI gets stuck under ledges.
+const NAV_BOX = { w: PLAYER.w, h: 48 };
 const nav = { cols: 0, rows: 0, open: new Uint8Array(0), floor: new Uint8Array(0), walls: [], slopes: [] };
 
 function buildNav() {
-  nav.cols = Math.floor((W - PLAYER.w) / CELL) + 1;
-  nav.rows = Math.floor((H - PLAYER.h) / CELL) + 1;
+  nav.cols = Math.floor((W - NAV_BOX.w) / CELL) + 1;
+  nav.rows = Math.floor((H - NAV_BOX.h) / CELL) + 1;
   nav.open = new Uint8Array(nav.cols * nav.rows);
   nav.floor = new Uint8Array(nav.cols * nav.rows); // open, with something to stand on right below
   const boxes = [...query('pos', 'box', 'solid'), ...query('pos', 'box', 'goal')];
   const slopes = [...query('slope')].map(([, s]) => s);
   for (let j = 0; j < nav.rows; j++) for (let i = 0; i < nav.cols; i++) {
     const pos = { x: i * CELL, y: j * CELL };
-    nav.open[j * nav.cols + i] = !boxes.some(([, p, b]) => overlaps(pos, PLAYER, p, b))
-      && !slopes.some((s) => (s.ceiling ? ceilingPen(pos, PLAYER, s) : slopePen(pos, PLAYER, s)) > 0);
+    nav.open[j * nav.cols + i] = !boxes.some(([, p, b]) => overlaps(pos, NAV_BOX, p, b))
+      && !slopes.some((s) => (s.ceiling ? ceilingPen(pos, NAV_BOX, s) : slopePen(pos, NAV_BOX, s)) > 0);
   }
   for (let k = 0; k < nav.open.length - nav.cols; k++) nav.floor[k] = nav.open[k] && !nav.open[k + nav.cols];
 
@@ -126,7 +128,7 @@ function stepCost(di, dj, k, avoid) {
   if (di && dj) c *= 1.4;
   const j = Math.floor(k / nav.cols);
   if (j >= nav.rows - 2 && !nav.floor[k]) c += 30; // the bottom edge over a pit: fall out and you drop in from the top
-  if (avoid && Math.hypot((k % nav.cols) * CELL + PLAYER.w / 2 - avoid.x, j * CELL + PLAYER.h / 2 - avoid.y) < avoid.r) c += 40; // all but forbidden
+  if (avoid && Math.hypot((k % nav.cols) * CELL + NAV_BOX.w / 2 - avoid.x, j * CELL + NAV_BOX.h / 2 - avoid.y) < avoid.r) c += 40; // all but forbidden
   return c;
 }
 
@@ -160,7 +162,7 @@ function findPath(from, to, avoid = null) {
 
 // Head for (x, y) (a point the player's CENTER should reach) along an A* route.
 function goTo(bb, x, y, avoidR = 0) {
-  const from = nodeAt(bb.pos.x, bb.pos.y), to = nodeAt(x - PLAYER.w / 2, y - PLAYER.h / 2);
+  const from = nodeAt(bb.pos.x, bb.pos.y + PLAYER.h - NAV_BOX.h), to = nodeAt(x - NAV_BOX.w / 2, y - NAV_BOX.h / 2);
   if (from < 0 || to < 0) { bb.dir = Math.sign(x - bb.mx); return; } // off the grid: just head that way
   // Hard thinks every step, but a route barely changes in 1/30s: reuse the last one if it's going to the same place and
   // I'm still on it (from where I am now). A* was most of the AI's cost.
@@ -176,7 +178,7 @@ function goTo(bb, x, y, avoidR = 0) {
   if (!bb.path.length) { bb.dir = from === to ? 0 : Math.sign(x - bb.mx); return; }
   // Aim two nodes along: steady enough not to dither, close enough not to cut a corner into a platform.
   const k = bb.path[Math.min(1, bb.path.length - 1)];
-  const tx = (k % nav.cols) * CELL + PLAYER.w / 2, ty = Math.floor(k / nav.cols) * CELL + PLAYER.h / 2;
+  const tx = (k % nav.cols) * CELL + NAV_BOX.w / 2, ty = Math.floor(k / nav.cols) * CELL + NAV_BOX.h / 2;
   bb.dir = Math.abs(tx - bb.mx) > 6 ? Math.sign(tx - bb.mx) : 0;
   if (ty < bb.my - 20 && (bb.body.grounded || bb.vel.y > -60)) bb.hop = true; // up: jump (again at the top of a jump, not while rising)
 }
@@ -190,7 +192,7 @@ const SLIDE_ROOM = 15; // nodes (~360px): the route must go on past where the sl
 function wantsSlide(bb) {
   const b = bb.body;
   if (!bb.dir || !b.grounded || b.slide > 0 || b.slideCool > 0 || bb.path.length < SLIDE_ROOM) return false;
-  const start = nodeAt(bb.pos.x, bb.pos.y);
+  const start = nodeAt(bb.pos.x, bb.pos.y + PLAYER.h - NAV_BOX.h);
   if (start < 0) return false;
   const row = Math.floor(start / nav.cols);
   for (let n = 0; n < SLIDE_RUN; n++) {

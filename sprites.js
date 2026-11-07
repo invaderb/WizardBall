@@ -14,8 +14,11 @@
 const WIZARD_OUTLINE = '#fff';
 // Dying wizards are outlined in red, whatever their player color.
 const DEATH_OUTLINE = '#f33';
-const WIZARD_SCALE = 1.2; // drawn a bit bigger than the hitbox, which doesn't change
-const WIZARD_GROUND = 24 - 23 * WIZARD_SCALE; // lifts the sprite so its feet (y = 23 before scaling) still land on the hitbox bottom
+const PLAYER = { w: 35, h: 53 }; // every player's hitbox (was 32 x 48, now ~10% bigger)
+// Levels place players by a 32 x 48 box's top-left: keep its feet (bottom centre) where they were.
+const playerSpawn = (p) => ({ x: p.x + 16 - PLAYER.w / 2, y: p.y + 48 - PLAYER.h });
+const WIZARD_SCALE = 1.32; // drawn a bit bigger than the hitbox
+const WIZARD_GROUND = PLAYER.h / 2 - 23 * WIZARD_SCALE; // lifts the sprite so its feet (y = 23 before scaling) still land on the hitbox bottom
 
 function drawWizard(ctx, color, pose, time = 0) {
   const f = pose.facing || 1;
@@ -28,9 +31,9 @@ function drawWizard(ctx, color, pose, time = 0) {
   ctx.save();
   if (dead > 0) { // falling over backwards, pivoting on the feet (the bottom of the hitbox): slowly at first, then faster
     const topple = Math.min(1, dead / 0.55);
-    ctx.translate(0, 24);
+    ctx.translate(0, PLAYER.h / 2);
     ctx.rotate(-f * (Math.PI / 2) * 0.97 * topple * topple);
-    ctx.translate(0, -24);
+    ctx.translate(0, -PLAYER.h / 2);
   }
   // The tucked ball is centered on the hitbox (so the somersault pivots around it); the standing wizard is lifted so its feet stay on the ground.
   ctx.translate(0, bob + (pose.air ? 0 : WIZARD_GROUND));
@@ -43,19 +46,22 @@ function drawWizard(ctx, color, pose, time = 0) {
   const circle = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); solid(); };
   const foot = (x, y) => { ctx.beginPath(); ctx.moveTo(x - 2.5, y); ctx.lineTo(x + 2.5, y); ctx.stroke(); };
 
-  // Hat: a floppy cone whose tip trails behind when moving and flutters up when falling. Drawn from the
-  // top of the head (`base` = the brim's height), the same way in both poses.
+  // Hat (as on the favicon): a floppy cone whose tip trails behind when moving and flutters up when falling,
+  // curling over at the end, on a thin brim. Drawn from the top of the head (`base` = the brim's height).
   const hat = (base, halfBrim, tipX, tipY) => {
+    const d = tipX < 0 ? -1 : 1; // the curl hangs off the side the tip leans to
+    const k = d * Math.min(1, (base - tipY) / 12), ky = Math.abs(k); // a short (tucked) hat gets a smaller curl
     ctx.beginPath();
-    ctx.moveTo(-halfBrim + 2.5, base);
-    ctx.quadraticCurveTo(tipX * 0.3 - 2, base - 8, tipX, tipY);
-    ctx.quadraticCurveTo(tipX * 0.3 + 4, base - 7, halfBrim - 2.5, base);
+    ctx.moveTo(d * (-halfBrim + 2.5), base);
+    ctx.quadraticCurveTo(tipX * 0.3 - 2 * d, base - 8, tipX, tipY);
+    ctx.bezierCurveTo(tipX + 3 * k, tipY - 1.6 * ky, tipX + 5.5 * k, tipY - 0.8 * ky, tipX + 6.5 * k, tipY + 1.4 * ky);
+    ctx.bezierCurveTo(tipX + 4.5 * k, tipY + 0.4 * ky, tipX + 2.5 * k, tipY + ky, tipX + 1.6 * k, tipY + 2.8 * ky);
+    ctx.quadraticCurveTo(tipX * 0.3 + 4 * d, base - 7, d * (halfBrim - 2.5), base);
     ctx.closePath();
     solid();
     ctx.beginPath();
-    ctx.moveTo(-halfBrim, base);
-    ctx.lineTo(halfBrim, base);
-    ctx.stroke();
+    ctx.ellipse(0, base, halfBrim, 1.5, 0, 0, Math.PI * 2);
+    solid();
   };
 
   // Arched backward: belly pushed forward, shoulders and head thrown back, arms flung up, hat knocked off,

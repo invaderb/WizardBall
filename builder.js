@@ -388,7 +388,7 @@ function hitTest(p) {
 	if (Math.hypot(p.x - level.ball.x, p.y - level.ball.y) <= 22)
 		return { obj: level.ball, resize: null };
 	for (const pl of level.players)
-		if (inRect(p, { x: pl.x, y: pl.y, w: 32, h: 48 }))
+		if (inRect(p, { ...playerSpawn(pl), ...PLAYER }))
 			return { obj: pl, resize: null };
 	for (const pl of level.players) // health bars: 24 wide, 3 segments = 200 tall (matches the game's HUD)
 		if (inRect(p, { x: pl.hud.x, y: pl.hud.y, w: 24, h: 200 }))
@@ -970,7 +970,8 @@ function draw() {
 	for (const p of level.players) {
 		// spawn point: the wizard itself, facing the middle like it does in the game
 		ctx.save();
-		ctx.translate(p.x + 16, p.y + 24); // sprites are drawn around the center of their 32 x 48 hitbox
+		const s = playerSpawn(p);
+		ctx.translate(s.x + PLAYER.w / 2, s.y + PLAYER.h / 2); // sprites are drawn around the center of their hitbox
 		drawWizard(ctx, p.color, {
 			facing: p.x < W / 2 ? 1 : -1,
 			phase: 0,

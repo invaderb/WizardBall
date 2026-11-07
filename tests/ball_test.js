@@ -140,7 +140,7 @@ function popScenario(label, levelJson, ballAt, bubbleAt, inSolid) {
     for (let i = 0; i < 240 && !bad; i++) {
       run('ballSystem()');
       const [bx, by] = JSON.parse(run('JSON.stringify(at())'));
-      if (run(`centreInSolid(${bx}, ${by})`) || by < 150 || bx < 150) bad = true;
+      if (run(`centreInSolid(${bx}, ${by})`) || by < 150 || (bx < 150 && by < 840)) bad = true; // (below the hairline's foot, y 840, is the open goal mouth: rolling in there is fine)
     }
     trials++; if (bad) stuck++;
   }

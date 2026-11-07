@@ -41,9 +41,9 @@ check('save/restore are balanced (the sprite never leaks canvas state into the r
 check('every wizard is outlined in white, whatever its player color', OUTLINE === '#fff' && calls.some((c) => c[0] === 'set' && c[1] === 'strokeStyle' && c[2] === '#fff') && !calls.some((c) => c[0] === 'set' && c[1] === 'strokeStyle' && c[2] === '#48f') && count('stroke') >= 7);
 
 // bigger, black-filled, no staff
-check(`it is drawn ${SCALE}x the hitbox size (slightly bigger)`, calls.some((c) => c[0] === 'scale' && c[1] === SCALE && c[2] === SCALE) && SCALE > 1 && SCALE <= 1.3, String(SCALE));
+check(`it is drawn ${SCALE}x the hitbox size (slightly bigger)`, calls.some((c) => c[0] === 'scale' && c[1] === SCALE && c[2] === SCALE) && SCALE > 1 && SCALE <= 1.4, String(SCALE));
 const fills = (cs) => cs.reduce((n, c, i) => n + (c[0] === 'fill' && cs.slice(0, i).reverse().find((e) => e[0] === 'set' && e[1] === 'fillStyle')?.[2] === '#000' ? 1 : 0), 0);
-check('robe, head and hat are filled BLACK (3 filled shapes standing)', fills(calls) === 3, String(fills(calls)));
+check('robe, head, hat and brim are filled BLACK (4 filled shapes standing)', fills(calls) === 4, String(fills(calls)));
 check('...then the fill color goes back to the outline color (so the eye is white on the black head)', (() => { const i = calls.findIndex((c) => c[0] === 'set' && c[1] === 'fillStyle' && c[2] === '#000'); return calls.slice(i).some((c) => c[0] === 'set' && c[1] === 'fillStyle' && c[2] === OUTLINE); })());
 check('the faint translucent fills are gone (it is solid black now)', !calls.some((c) => c[0] === 'set' && c[1] === 'globalAlpha'));
 check('no staff: no orb (radius 3) and nothing drawn out to the side but one short arm', !calls.some((c) => c[0] === 'arc' && c[3] === 3) && calls.filter((c) => c[0] === 'lineTo').every((c) => Math.abs(c[1]) <= 12));
@@ -52,7 +52,7 @@ const eye = (pose) => draw(pose).find((c) => c[0] === 'arc' && c[3] === 1.1); //
 check('facing flips the eye to the other side (standing and tucked)', eye({ ...idle, facing: 1 })[1] > 0 && eye({ ...idle, facing: -1 })[1] < 0 && eye({ ...air, facing: 1 })[1] > 0 && eye({ ...air, facing: -1 })[1] < 0);
 const feet = (pose) => draw(pose).filter((c, i, a) => c[0] === 'moveTo' && a[i + 1]?.[0] === 'lineTo' && Math.abs(a[i + 1][1] - c[1] - 5) < 0.001 && a[i + 1][2] === c[2]).map((c) => [c[1], c[2]]);
 check('feet: two of them, at the bottom of the (unscaled) sprite', feet(idle).length === 2 && feet(idle).every(([, y]) => y > 19 && y <= 24), JSON.stringify(feet(idle)));
-check('standing, the scaled feet land exactly on the hitbox bottom (y = 24) so it is not floating or sunk into the floor', Math.abs(23 * SCALE + GROUND - 24) < 1e-9);
+check('standing, the scaled feet land exactly on the hitbox bottom (y = PLAYER.h / 2) so it is not floating or sunk into the floor', Math.abs(23 * SCALE + GROUND - run('PLAYER.h') / 2) < 1e-9);
 check('running moves the feet from frame to frame', JSON.stringify(feet({ ...idle, moving: true, phase: 0.1 })) !== JSON.stringify(feet({ ...idle, moving: true, phase: 0.35 })));
 check('a full run cycle comes back to the same pose', JSON.stringify(feet({ ...idle, moving: true, phase: 0.2 })) === JSON.stringify(feet({ ...idle, moving: true, phase: 1.2 })));
 
@@ -65,7 +65,7 @@ check('the tucked ball keeps a head, eye, hat and two feet', arcR(tuck, 5) === 1
 check('tucked feet are drawn up against the ball (not down at standing height)', feet(air).every(([, y]) => y < 16), JSON.stringify(feet(air)));
 check('the tucked ball is centered on the hitbox so the somersault pivots on it (no ground lift)', tuck.find((c) => c[0] === 'translate')[2] === 0 && draw(idle).find((c) => c[0] === 'translate')[2] === GROUND);
 check('the tuck is compact: nothing beyond ~21px from the center (unscaled)', tuck.filter((c) => c[0] === 'lineTo' || c[0] === 'moveTo').every((c) => Math.abs(c[1]) <= 12 && c[2] >= -20 && c[2] <= 14));
-check('it is filled black too (ball, head, hat)', fills(tuck) === 3, String(fills(tuck)));
+check('it is filled black too (ball, head, hat, brim)', fills(tuck) === 4, String(fills(tuck)));
 const tipY = (pose) => draw(pose).find((c) => c[0] === 'quadraticCurveTo')[4];
 check('the hat is pushed down when rising and flutters up when falling (tucked)', tipY({ ...air, vy: -620 }) > tipY({ ...air, vy: 620 }));
 check('the hat trails behind the facing direction in the air', draw({ ...air, facing: 1 }).find((c) => c[0] === 'quadraticCurveTo')[3] < 0 && draw({ ...air, facing: -1 }).find((c) => c[0] === 'quadraticCurveTo')[3] > 0);

@@ -21,6 +21,7 @@ function makeWorld() {
 let failed = 0;
 const check = (name, ok, extra = '') => { if (!ok) failed++; console.log(ok ? 'PASS' : 'FAIL', name, extra); };
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
+const STAND = 976 - makeWorld().run('PLAYER.h'); // a player standing on the floor (its top is y = 976)
 
 // ===================== the sprite's death pose, directly =====================
 {
@@ -34,7 +35,7 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
   check('the death pose draws at every stage, both facings, without throwing', threw === null, threw ?? '');
   const d = draw({ dead: 0.5 });
   check('red outline whatever the player color: every stroke color is the death red', strokes(d).length > 0 && strokes(d).every((c) => c === '#f33') && run('DEATH_OUTLINE') === '#f33', JSON.stringify([...new Set(strokes(d))]));
-  check('it is still filled black (robe, head and hat)', d.filter((c, i) => c[0] === 'fill' && d.slice(0, i).reverse().find((e) => e[0] === 'set' && e[1] === 'fillStyle')?.[2] === '#000').length === 3);
+  check('it is still filled black (robe, head, hat and brim)', d.filter((c, i) => c[0] === 'fill' && d.slice(0, i).reverse().find((e) => e[0] === 'set' && e[1] === 'fillStyle')?.[2] === '#000').length === 4);
   check('save/restore balanced even with the hat tumbling in its own save/restore', d.filter((c) => c[0] === 'save').length === d.filter((c) => c[0] === 'restore').length);
   check('X eyes instead of the round eye', !d.some((c) => c[0] === 'arc' && c[3] === 1.1) && d.filter((c) => c[0] === 'lineTo' && Math.abs(Math.abs(c[1]) - 0) > 0).length > 0);
   const xs = d.filter((c, i) => c[0] === 'lineTo' && d[i - 1]?.[0] === 'moveTo' && near(Math.abs(c[1] - d[i - 1][1]), 2.8, 1e-9) && near(Math.abs(c[2] - d[i - 1][2]), 2.8, 1e-9));
@@ -45,8 +46,8 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
   // the topple
   const theta = (p) => Math.PI / 2 * 0.97 * Math.min(1, p / 0.55) ** 2;
   check('it topples about the FEET: translate to the hitbox bottom, rotate, translate back', (() => {
-    const c = draw({ dead: 0.5 }); const i = c.findIndex((e) => e[0] === 'translate' && e[1] === 0 && e[2] === 24);
-    return i >= 0 && c[i + 1][0] === 'rotate' && c[i + 2][0] === 'translate' && c[i + 2][2] === -24;
+    const c = draw({ dead: 0.5 }); const i = c.findIndex((e) => e[0] === 'translate' && e[1] === 0 && e[2] === run('PLAYER.h') / 2);
+    return i >= 0 && c[i + 1][0] === 'rotate' && c[i + 2][0] === 'translate' && c[i + 2][2] === -run('PLAYER.h') / 2;
   })());
   check('facing right topples BACKWARD (counter-clockwise, negative angle); facing left the other way', rotations(draw({ facing: 1, dead: 0.5 }))[0] < 0 && rotations(draw({ facing: -1, dead: 0.5 }))[0] > 0);
   const angles = [0.1, 0.3, 0.55, 0.8, 1].map((p) => -rotations(draw({ facing: 1, dead: p }))[0]);
@@ -72,8 +73,8 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
   const who = (slot) => `[...query("pos","controls","vel","body")].find(e => e[2].slot === ${slot})`;
   const pos = (slot) => JSON.parse(run(`JSON.stringify({ x: ${who(slot)}[1].x, y: ${who(slot)}[1].y, vx: ${who(slot)}[3].x, vy: ${who(slot)}[3].y, grounded: ${who(slot)}[4].grounded })`));
   // blue (slot 0) stands facing right, mid-somersault; the ball goes into RED's goal (left), so blue is the victim
-  run(`const bp0 = ${who(0)}[1]; bp0.x = 600; bp0.y = 928; ${who(0)}[3].x = 300; components.anim.get(${who(0)}[0]).facing = 1; components.spin.get(${who(0)}[0]).a = 1.2;`);
-  run(`const rp0 = ${who(1)}[1]; rp0.x = 1500; rp0.y = 928; ${who(1)}[3].x = 200;`); // red is running when it scores
+  run(`const bp0 = ${who(0)}[1]; bp0.x = 600; bp0.y = ${STAND}; ${who(0)}[3].x = 300; components.anim.get(${who(0)}[0]).facing = 1; components.spin.get(${who(0)}[0]).a = 1.2;`);
+  run(`const rp0 = ${who(1)}[1]; rp0.x = 1500; rp0.y = ${STAND}; ${who(1)}[3].x = 200;`); // red is running when it scores
   run('for (const [, p, v] of query("pos","vel","circle")) { p.x = -50; p.y = 900; v.x = 0; v.y = 0; }');
   run('goalSystem()');
   const victimId = run('round.beam.victims[0]'), blueId = run(`${who(0)}[0]`);
@@ -90,10 +91,10 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
     run(`frame(${t})`);
     samples.push({ hit: run('round.hit'), ...pos(0), red: pos(1).x });
   }
-  const air = samples.filter((s) => s.y < 928);
-  check('the victim hops up and back first (leaves the floor)', air.length > 3 && Math.min(...samples.map((s) => s.y)) < 928 - 20, `highest y ${Math.min(...samples.map((s) => s.y)).toFixed(0)}`);
+  const air = samples.filter((s) => s.y < STAND);
+  check('the victim hops up and back first (leaves the floor)', air.length > 3 && Math.min(...samples.map((s) => s.y)) < STAND - 20, `highest y ${Math.min(...samples.map((s) => s.y)).toFixed(0)}`);
   const late = samples.filter((s) => s.hit < 0.5);
-  check('then falls under gravity and is lying on the floor well before the end (y = 928, grounded, stopped)', late.length > 0 && late.every((s) => s.y === 928 && s.grounded && s.vy === 0), JSON.stringify(late.at(-1)));
+  check('then falls under gravity and is lying on the floor well before the end (y = STAND, grounded, stopped)', late.length > 0 && late.every((s) => s.y === STAND && s.grounded && s.vy === 0), JSON.stringify(late.at(-1)));
   check('it landed BEHIND where it stood (left of x=600, since it faced right)', late.at(-1).x < startX - 40, `${startX} -> ${late.at(-1).x.toFixed(0)}`);
   check('it slid back only a modest distance (knockback, not a launch)', late.at(-1).x > startX - 400);
   check('the scorer did not move at all', samples.every((s) => s.red === 1500));
@@ -102,7 +103,7 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
   // the scorer was caught mid-somersault, facing away from the middle, running
   run(`Object.assign(components.anim.get(${who(1)}[0]), { facing: 1, air: true, moving: true, phase: 0.6, vy: -400 })`);
   run('frame(5000)'); run('frame(5100)');
-  check('afterwards: reset to spawn, standing, countdown running', (() => { const p = pos(0); return p.x === 140 && p.y === 928 && p.vx === 0 && run('round.hit') <= 0 && run('round.t') > 2; })(), JSON.stringify(pos(0)));
+  check('afterwards: reset to spawn, standing, countdown running', (() => { const p = pos(0); return p.x === 140 + 16 - run('PLAYER.w') / 2 && p.y === STAND && p.vx === 0 && run('round.hit') <= 0 && run('round.t') > 2; })(), JSON.stringify(pos(0)));
   const pose = (slot) => JSON.parse(run(`JSON.stringify(components.anim.get(${who(slot)}[0]))`));
   check('...and both players are back in their spawn pose for the countdown: standing (not tucked in a ball), facing the middle',
     JSON.stringify(pose(0)) === JSON.stringify({ facing: 1, phase: 0, moving: false, air: false, vy: 0, slide: false })
@@ -116,7 +117,7 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
   const w = makeWorld(), run = w.run;
   run('menu.open = false; round.t = 0');
   const who = (slot) => `[...query("pos","controls","vel","body","anim")].find(e => e[2].slot === ${slot})`;
-  run(`${who(1)}[1].x = 1500; ${who(1)}[1].y = 928;`); // red stands on the floor, well away from the ball
+  run(`${who(1)}[1].x = 1500; ${who(1)}[1].y = ${STAND};`); // red stands on the floor, well away from the ball
   run('frame(10); frame(20);'); // settle: red is grounded
   run('for (const [, p, v] of query("pos","vel","circle")) { p.x = 30; p.y = 900; v.x = -400; v.y = 0; }'); // rolling into red's goal (left)
   for (let t = 30; t < 300 && run('round.hit') <= 0; t += 10) run(`frame(${t})`);

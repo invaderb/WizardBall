@@ -1077,10 +1077,10 @@ function loadLevel(level) {
 
 	const ids = level.players.map((p, slot) =>
 		spawn({
-			pos: { x: p.x, y: p.y },
+			pos: playerSpawn(p),
 			vel: { x: 0, y: 0 },
-			spawn: { x: p.x, y: p.y },
-			box: { w: 32, h: 48 },
+			spawn: playerSpawn(p),
+			box: { ...PLAYER },
 			// slide: seconds left of one (slideDir its direction); held / tapDir / tapAge spot a double tap
 			body: { grounded: false, bubble: null, slope: null, ...NO_SLIDE },
 			spin: { a: 0 },

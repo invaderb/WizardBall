@@ -19,6 +19,7 @@ function makeWorld({ search = '', saved = null } = {}) {
 }
 let failed = 0;
 const check = (name, ok, extra = '') => { if (!ok) failed++; console.log(ok ? 'PASS' : 'FAIL', name, extra); };
+const PL = makeWorld().run('({ ...PLAYER })'); // the players' hitbox size
 
 // ===================== level selection from the URL =====================
 {
@@ -109,9 +110,9 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log(ok ? 'P
 
   run('const owner0 = [...query("controls")][0][0]; spawn({ pos: { x: 400, y: 300 }, box: { w: 200, h: 200 }, goal: { owner: owner0, shape: "circle" }, look: { color: "#48f" } })');
   w.log.length = 0; run('renderSystem()');
-  const el = w.log.filter((c) => c[0] === 'ellipse');
+  const el = w.log.filter((c) => c[0] === 'ellipse' && c[4] !== 1.5); // (not the wizards' hat brims)
   check('a circular goal is drawn with an ellipse (tint fill + outline = 2 paths)', el.length === 2 && el.every((c) => c[3] === 100 && c[4] === 100), String(el.length));
-  check('...its tint is 20% in its owner color', (() => { const i = w.log.findIndex((c) => c[0] === 'ellipse'); return w.log.slice(Math.max(0, i - 4), i).some((c) => c[0] === 'set' && c[1] === 'globalAlpha' && c[2] === 0.2); })());
+  check('...its tint is 20% in its owner color', (() => { const i = w.log.findIndex((c) => c[0] === 'ellipse' && c[4] !== 1.5); return w.log.slice(Math.max(0, i - 4), i).some((c) => c[0] === 'set' && c[1] === 'globalAlpha' && c[2] === 0.2); })());
 }
 
 // ===================== ceiling slopes (rotated quarter-pipes): players =====================
@@ -127,31 +128,31 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log(ok ? 'P
   // thin end on the left (surface y=780), thick end on the right reaching the floor (y=976)
   const C = { x: 800, y: 780, w: 200, h: 196, high: 'right', ceiling: true };
   let { run } = mk(C);
-  run('P.pos.x = 700; P.pos.y = 928; P.vel.x = 0; P.vel.y = 0; let minY = 1e9; for (let i = 0; i < 160; i++) { step(450); minY = Math.min(minY, P.pos.y); } globalThis.minY = minY');
-  check("running into a ceiling slope's thick end at floor level: blocked like a wall (stops short of x=1000)", run('P.pos.x + 32') < 960 && run('P.pos.x + 32') > 930, run('(P.pos.x + 32).toFixed(1)'));
-  check('...without being lifted or dropped (still standing on the floor, y = 928)', run('P.pos.y') === 928 && run('minY') === 928);
+  run('P.pos.x = 700; P.pos.y = 976 - PLAYER.h; P.vel.x = 0; P.vel.y = 0; let minY = 1e9; for (let i = 0; i < 160; i++) { step(450); minY = Math.min(minY, P.pos.y); } globalThis.minY = minY');
+  check("running into a ceiling slope's thick end at floor level: blocked like a wall (stops short of x=1000)", run('P.pos.x + PLAYER.w') < 960 && run('P.pos.x + PLAYER.w') > 930, run('(P.pos.x + PLAYER.w).toFixed(1)'));
+  check('...without being lifted or dropped (still standing on the floor, y = 976 - PLAYER.h)', run('P.pos.y === 976 - PLAYER.h && minY === 976 - PLAYER.h'));
   ({ run } = mk(C));
-  run('P.pos.x = 800; P.pos.y = 928; P.vel.x = 0; P.vel.y = 0; for (let i = 0; i < 20; i++) step(0)');
+  run('P.pos.x = 800; P.pos.y = 976 - PLAYER.h; P.vel.x = 0; P.vel.y = 0; for (let i = 0; i < 20; i++) step(0)');
   const surfaceAt = (xp) => 780 + 196 * (xp - 800) / 200;
   run('P.vel.y = -620; let top = 1e9; for (let i = 0; i < 200; i++) { step(0); top = Math.min(top, P.pos.y); } globalThis.top = top');
-  check('jumping up under it: head bump at the surface (not through it, not teleported)', Math.abs(run('top') - surfaceAt(832)) < 1.5, `${run('top').toFixed(1)} vs surface ${surfaceAt(832).toFixed(1)}`);
+  check('jumping up under it: head bump at the surface (not through it, not teleported)', Math.abs(run('top') - surfaceAt(800 + PL.w)) < 1.5, `${run('top').toFixed(1)} vs surface ${surfaceAt(800 + PL.w).toFixed(1)}`);
   ({ run } = mk(C));
-  run('P.pos.x = 600; P.pos.y = 928; P.vel.x = 0; P.vel.y = 0; for (let i = 0; i < 20; i++) step(0); P.vel.y = -620; let top = 1e9; for (let i = 0; i < 200; i++) { step(0); top = Math.min(top, P.pos.y); } globalThis.top = top');
+  run('P.pos.x = 600; P.pos.y = 976 - PLAYER.h; P.vel.x = 0; P.vel.y = 0; for (let i = 0; i < 20; i++) step(0); P.vel.y = -620; let top = 1e9; for (let i = 0; i < 200; i++) { step(0); top = Math.min(top, P.pos.y); } globalThis.top = top');
   check('away from it, the same jump goes the full height (no invisible ceiling)', run('top') < 928 - 200, run('top').toFixed(1));
   ({ run } = mk(C));
   run('P.pos.x = 900; P.pos.y = 500; P.vel.x = 0; P.vel.y = 0; for (let i = 0; i < 200; i++) step(0)');
-  check("falling onto its flat top: lands and stands on it (y = 780 - 48)", run('P.pos.y') === 732 && run('P.body.grounded') === true, run('P.pos.y.toFixed(1)'));
+  check("falling onto its flat top: lands and stands on it (y = 780 - PLAYER.h)", run('P.pos.y') === 780 - PL.h && run('P.body.grounded') === true, run('P.pos.y.toFixed(1)'));
   run('for (let i = 0; i < 60; i++) step(0)');
-  check('...and stays grounded there (no jitter)', run('P.pos.y') === 732 && run('P.body.grounded'));
-  run('let air = 0, onTop = 0; for (let i = 0; i < 60; i++) { step(450); if (P.pos.x + 32 > 800 && P.pos.x < 1000) { onTop++; if (!P.body.grounded) air++; } } globalThis.air = air; globalThis.onTop = onTop');
+  check('...and stays grounded there (no jitter)', run('P.pos.y') === 780 - PL.h && run('P.body.grounded'));
+  run('let air = 0, onTop = 0; for (let i = 0; i < 60; i++) { step(450); if (P.pos.x + PLAYER.w > 800 && P.pos.x < 1000) { onTop++; if (!P.body.grounded) air++; } } globalThis.air = air; globalThis.onTop = onTop');
   check('walking across the top: grounded every step while over it (then it simply walks off the edge)', run('onTop') > 20 && run('air') === 0, `${run('onTop')} steps over it, ${run('air')} airborne`);
   // thick end on the LEFT mirrors it
   ({ run } = mk({ ...C, high: 'left' }));
-  run('P.pos.x = 1100; P.pos.y = 928; P.vel.x = 0; P.vel.y = 0; for (let i = 0; i < 160; i++) step(-450)');
-  check('high:left mirrors the first case: running left under the thin end, then blocked by the thick LEFT end at x ~ 849 (= 1800 - 951)', run('P.pos.x') > 845 && run('P.pos.x') < 860 && run('P.pos.y') === 928, run('P.pos.x.toFixed(1)'));
+  run('P.pos.x = 1100; P.pos.y = 976 - PLAYER.h; P.vel.x = 0; P.vel.y = 0; for (let i = 0; i < 160; i++) step(-450)');
+  check('high:left mirrors the first case: running left under the thin end, then blocked by the thick LEFT end at x ~ 849 (= 1800 - 951)', run('P.pos.x') > 845 && run('P.pos.x') < 860 && run('P.pos.y') === 976 - PL.h, run('P.pos.x.toFixed(1)'));
   // floor slopes are untouched
   ({ run } = mk({ x: 800, y: 776, w: 200, h: 200, high: 'right' }));
-  run('P.pos.x = 700; P.pos.y = 928; P.vel.x = 0; P.vel.y = 0; for (let i = 0; i < 70; i++) step(450)');
+  run('P.pos.x = 700; P.pos.y = 976 - PLAYER.h; P.vel.x = 0; P.vel.y = 0; for (let i = 0; i < 70; i++) step(450)');
   check('a normal floor ramp still climbs as before', run('P.pos.y') < 760 && run('P.body.grounded'), run('P.pos.y.toFixed(1)'));
 }
 
@@ -180,12 +181,12 @@ const check = (name, ok, extra = '') => { if (!ok) failed++; console.log(ok ? 'P
   };
   let { run } = mk();
   run('P.pos.x = 900; P.pos.y = 500; P.vel.x = 0; P.vel.y = 0; for (let i = 0; i < 200; i++) step(0)');
-  check('a player lands on a 2px platform and stands on it (y = 700 - 48, grounded)', run('P.pos.y') === 652 && run('P.body.grounded') === true, run('P.pos.y.toFixed(1)'));
+  check('a player lands on a 2px platform and stands on it (y = 700 - PLAYER.h, grounded)', run('P.pos.y') === 700 - PL.h && run('P.body.grounded') === true, run('P.pos.y.toFixed(1)'));
   ({ run } = mk());
-  run('P.pos.x = 900; P.pos.y = 300; P.vel.x = 0; P.vel.y = 2000; let below = false; for (let i = 0; i < 60; i++) { step(0); if (P.pos.y > 652.5) below = true; } globalThis.below = below');
-  check('...even falling at 2000 px/s it does not tunnel through (16px per step vs a 2px wall)', run('below') === false && run('P.pos.y') === 652);
+  run('P.pos.x = 900; P.pos.y = 300; P.vel.x = 0; P.vel.y = 2000; let below = false; for (let i = 0; i < 60; i++) { step(0); if (P.pos.y > 700 - PLAYER.h + 0.5) below = true; } globalThis.below = below');
+  check('...even falling at 2000 px/s it does not tunnel through (16px per step vs a 2px wall)', run('below') === false && run('P.pos.y') === 700 - PL.h);
   ({ run } = mk());
-  run('P.pos.x = 900; P.pos.y = 928; P.vel.x = 0; P.vel.y = 0; for (let i = 0; i < 10; i++) step(0)');
+  run('P.pos.x = 900; P.pos.y = 976 - PLAYER.h; P.vel.x = 0; P.vel.y = 0; for (let i = 0; i < 10; i++) step(0)');
   run('for (const [id, p] of query("pos","box","solid")) if (p.y === 700) despawn(id); spawn({ pos: { x: 800, y: 800 }, box: { w: 300, h: 2 }, solid: true, look: { color: "#fff" } }); P.vel.y = -620; let top = 1e9; for (let i = 0; i < 150; i++) { step(0); top = Math.min(top, P.pos.y); } globalThis.top = top');
   check('jumping into the underside of a 2px ceiling: head bump at its bottom edge (y = 802)', Math.abs(run('top') - 802) < 0.5, run('top').toFixed(1));
   ({ run } = mk());

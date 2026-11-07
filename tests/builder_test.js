@@ -300,7 +300,7 @@ const wallCount = run('level.walls.length');
 check(`walls are drawn with rounded corners: ${wallCount} roundRect calls, radius <= 6`, log.filter((c) => c[0] === 'roundRect').length === wallCount && log.filter((c) => c[0] === 'roundRect').every((c) => c[5] <= 6 && c[5] > 0));
 check('a plain draw has no square strokeRect for walls / goals / zones', !log.some((c) => c[0] === 'strokeRect'));
 check('circular zones and goals are drawn as ellipses (zones x1 stroke, goals fill + stroke)', log.filter((c) => c[0] === 'ellipse').length >= 2 + 2 * 2);  // 2 zones x 1 outline + 2 goals x (fill + outline)
-check('...and every one of them is round: equal radii', log.filter((c) => c[0] === 'ellipse').every((c) => c[3] === c[4]) && log.some((c) => c[0] === 'ellipse'));
+check('...and every one of them is round: equal radii', log.filter((c) => c[0] === 'ellipse' && c[4] !== 1.5).every((c) => c[3] === c[4]) && log.some((c) => c[0] === 'ellipse'));
 run('selected = { list: "zones", index: ' + zoneIdx + ' }; draw()');
 check('a selected circle gets a cyan ellipse outline, not a box', (() => { log.length = 0; run('draw()'); const i = log.findIndex((c) => c[0] === 'set' && c[1] === 'strokeStyle' && c[2] === '#0ff'); return i >= 0 && log.slice(i, i + 4).some((c) => c[0] === 'ellipse'); })());
 run("pick('zonec')"); for (const f of handlers.canvas.mousedown) f({ clientX: 100, clientY: 100, button: 0 }); for (const f of handlers.canvas.mousemove) f({ clientX: 300, clientY: 150 });

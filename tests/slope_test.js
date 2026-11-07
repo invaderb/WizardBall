@@ -30,41 +30,41 @@ const setup = (slope) => `
 const RAMP = { x: 800, y: 776, w: 200, h: 200, high: 'right' }; // its base sits on the floor (y = 976)
 
 run(setup(RAMP) + `
-  pos.x = 700; pos.y = 928; vel.x = 0; vel.y = 0;
+  pos.x = 700; pos.y = 976 - box.h; vel.x = 0; vel.y = 0;
   for (let i = 0; i < 70; i++) step(450);
-  check('run up a straight ramp: still on it, riding the surface (y between 725 and 745), grounded', body.grounded && pos.y > 725 && pos.y < 745 && pos.x > 940 && pos.x < 990, pos.x.toFixed(1) + ',' + pos.y.toFixed(1));
+  check('run up a straight ramp: still on it, riding the surface (feet between 773 and 793), grounded', body.grounded && pos.y + box.h > 773 && pos.y + box.h < 793 && pos.x > 940 && pos.x < 990, pos.x.toFixed(1) + ',' + pos.y.toFixed(1));
 `);
 
 run(setup(RAMP) + `
-  pos.x = 900; pos.y = 796; vel.x = 0; vel.y = 0;
+  pos.x = 900; pos.y = 844 - box.h; vel.x = 0; vel.y = 0;
   for (let i = 0; i < 5; i++) step(0);
   let air = 0;
   for (let i = 0; i < 40; i++) { step(-450); if (!body.grounded) air++; }
-  check('run DOWN the ramp: grounded on every step (so a jump still works), and ends on the floor', air === 0 && pos.y === 928, air + ' airborne steps, y=' + pos.y);
+  check('run DOWN the ramp: grounded on every step (so a jump still works), and ends on the floor', air === 0 && pos.y === 976 - box.h, air + ' airborne steps, y=' + pos.y);
 `);
 
 run(setup(RAMP) + `
-  pos.x = 1100; pos.y = 928; vel.x = 0; vel.y = 0;
+  pos.x = 1100; pos.y = 976 - box.h; vel.x = 0; vel.y = 0;
   let minY = 1e9;
   for (let i = 0; i < 80; i++) { step(-450); minY = Math.min(minY, pos.y); }
-  check("walking into the ramp's TALL face is a wall (stops at x ~ 1000), never a teleport onto the top", pos.x >= 1000 && pos.x < 1006 && minY === 928, 'x=' + pos.x.toFixed(1) + ' minY=' + minY);
+  check("walking into the ramp's TALL face is a wall (stops at x ~ 1000), never a teleport onto the top", pos.x >= 1000 && pos.x < 1006 && minY === 976 - box.h, 'x=' + pos.x.toFixed(1) + ' minY=' + minY);
 `);
 
 run(setup({ ...RAMP, high: 'left' }) + `
-  pos.x = 1100; pos.y = 928; vel.x = 0; vel.y = 0;
+  pos.x = 1100; pos.y = 976 - box.h; vel.x = 0; vel.y = 0;
   for (let i = 0; i < 70; i++) step(-450);
-  check('a ramp tall on the LEFT mirrors it: run up it leftwards', body.grounded && pos.y > 750 && pos.y < 780 && pos.x < 900, pos.x.toFixed(1) + ',' + pos.y.toFixed(1));
+  check('a ramp tall on the LEFT mirrors it: run up it leftwards', body.grounded && pos.y + box.h > 798 && pos.y + box.h < 828 && pos.x < 900, pos.x.toFixed(1) + ',' + pos.y.toFixed(1));
 `);
 
 run(setup({ ...RAMP, curve: true }) + `
-  pos.x = 700; pos.y = 928; vel.x = 0; vel.y = 0;
+  pos.x = 700; pos.y = 976 - box.h; vel.x = 0; vel.y = 0;
   let minY = 1e9;
   for (let i = 0; i < 140; i++) { step(450); minY = Math.min(minY, pos.y); }
-  check('quarter-pipe: climbs well up it, but the near-vertical top blocks (never jumps onto the 728 top)', minY < 800 && minY > 735, 'min y=' + minY.toFixed(1));
+  check('quarter-pipe: climbs well up it, but the near-vertical top blocks (never jumps onto the 728 top)', minY + box.h < 848 && minY + box.h > 783, 'min y=' + minY.toFixed(1));
 `);
 
 run(setup({ x: 700, y: 600, w: 200, h: 150, high: 'right' }) + `
-  pos.x = 760; pos.y = 928; vel.x = 0; vel.y = -620;
+  pos.x = 760; pos.y = 976 - box.h; vel.x = 0; vel.y = -620;
   let minY = 1e9;
   for (let i = 0; i < 120; i++) { step(0); minY = Math.min(minY, pos.y); }
   check("jumping into the underside of a floating ramp: head bump at its base (y ~ 750), never through or onto it", minY >= 749 && minY < 752, 'min y=' + minY.toFixed(1));
