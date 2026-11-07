@@ -336,19 +336,73 @@ function inPolygon(pts, x, y) {
 // point is only "out" when the ball is outside: when it is inside (it reached the surface, or got shoved past it)
 // that same direction points deeper in, so it has to be flipped. Getting this wrong pushes the ball further INTO
 // the solid, and it comes out the other side.
-function polygonContact(pts, x, y) {
-	let best = null;
+// Did the path a -> b go right THROUGH the polygon, in one side and out another (a ball shoved across a ramp's thin
+// tip in one step)? Returns where it went in and that edge's outward normal (pointing back toward a), else null.
+function throughPolygon(pts, a, b) {
+	if (inPolygon(pts, a.x, a.y) || inPolygon(pts, b.x, b.y)) return null;
+	const rx = b.x - a.x,
+		ry = b.y - a.y;
+	let first = null,
+		crossings = 0;
 	for (let i = 0; i < pts.length; i++) {
-		const a = pts[i],
-			b = pts[(i + 1) % pts.length];
-		const ex = b.x - a.x,
-			ey = b.y - a.y;
-		const len2 = ex * ex + ey * ey;
-		const t = len2 ? Math.max(0, Math.min(1, ((x - a.x) * ex + (y - a.y) * ey) / len2)) : 0;
-		const cx = a.x + t * ex,
-			cy = a.y + t * ey;
-		const dist = Math.hypot(x - cx, y - cy);
-		if (!best || dist < best.dist) best = { x: cx, y: cy, dist, ex, ey };
+		const p = pts[i],
+			q = pts[(i + 1) % pts.length];
+		const sx = q.x - p.x,
+			sy = q.y - p.y;
+		const den = rx * sy - ry * sx;
+		if (!den) continue; // parallel
+		const t = ((p.x - a.x) * sy - (p.y - a.y) * sx) / den, // along a -> b
+			u = ((p.x - a.x) * ry - (p.y - a.y) * rx) / den; // along the edge
+		if (t < 0 || t > 1 || u < 0 || u > 1) continue;
+		crossings++;
+		if (!first || t < first.t) first = { t, x: a.x + t * rx, y: a.y + t * ry, ex: sx, ey: sy };
+	}
+	if (crossings < 2) return null;
+	const len = Math.hypot(first.ex, first.ey) || 1;
+	let nx = first.ey / len,
+		ny = -first.ex / len;
+	if ((a.x - first.x) * nx + (a.y - first.y) * ny < 0) {
+		nx = -nx;
+		ny = -ny;
+	}
+	return { x: first.x, y: first.y, nx, ny };
+}
+
+// `from` (optional): where the point was a moment ago. If it was OUTSIDE and is now inside (shoved in, say by a player
+// or a bubble), only the edges it could have come in through count: those with `from` on their outer side. Otherwise
+// the nearest edge wins, and near a quarter-pipe's corner that is often one of its flat back faces, which sit flush
+// against the arena's walls: leaving through one of those put the ball out of bounds, behind the wall.
+function polygonContact(pts, x, y, from) {
+	const outerSide = (a, b, px, py) => {
+		// is (px, py) on the outer side of edge a->b? (its outward normal is the side that isn't inside the polygon)
+		const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+		let nx = (b.y - a.y) / len,
+			ny = -(b.x - a.x) / len;
+		const mx = (a.x + b.x) / 2,
+			my = (a.y + b.y) / 2;
+		if (inPolygon(pts, mx + nx * 0.5, my + ny * 0.5)) {
+			nx = -nx;
+			ny = -ny;
+		}
+		return (px - mx) * nx + (py - my) * ny > 0;
+	};
+	const cameIn = from && inPolygon(pts, x, y) && !inPolygon(pts, from.x, from.y);
+	let best = null;
+	for (const filter of cameIn ? [true, false] : [false]) { // (if no edge passes the filter, fall back to all of them)
+		for (let i = 0; i < pts.length; i++) {
+			const a = pts[i],
+				b = pts[(i + 1) % pts.length];
+			if (filter && !outerSide(a, b, from.x, from.y)) continue;
+			const ex = b.x - a.x,
+				ey = b.y - a.y;
+			const len2 = ex * ex + ey * ey;
+			const t = len2 ? Math.max(0, Math.min(1, ((x - a.x) * ex + (y - a.y) * ey) / len2)) : 0;
+			const cx = a.x + t * ex,
+				cy = a.y + t * ey;
+			const dist = Math.hypot(x - cx, y - cy);
+			if (!best || dist < best.dist) best = { x: cx, y: cy, dist, ex, ey };
+		}
+		if (best) break;
 	}
 	const inside = inPolygon(pts, x, y);
 	let nx, ny;

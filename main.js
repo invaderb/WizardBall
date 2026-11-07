@@ -411,6 +411,44 @@ function centreInSolid(x, y) {
 	return false;
 }
 
+// Which face of box (bp, bb) did the path from `prev` to `pos` come in by? null if it didn't cross into the box (or
+// started inside it). A line-vs-box clip (Liang-Barsky): the face where the path enters is the last one it crosses.
+const FACE_NORMALS = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] };
+function entryFace(prev, pos, bp, bb) {
+	const dx = pos.x - prev.x,
+		dy = pos.y - prev.y;
+	let t0 = 0,
+		t1 = 1,
+		face = null;
+	for (const [p, q, f] of [
+		[-dx, prev.x - bp.x, "left"],
+		[dx, bp.x + bb.w - prev.x, "right"],
+		[-dy, prev.y - bp.y, "top"],
+		[dy, bp.y + bb.h - prev.y, "bottom"],
+	]) {
+		if (p === 0) {
+			if (q < 0) return null; // parallel to this face and outside it
+			continue;
+		}
+		const r = q / p;
+		if (p < 0) {
+			if (r > t1) return null;
+			if (r > t0) {
+				t0 = r;
+				face = f;
+			}
+		} else {
+			if (r < t0) return null;
+			if (r < t1) t1 = r;
+		}
+	}
+	return face;
+}
+// Is `pos` out on that face's side of the box (where it came from), not inside it or beyond?
+function onSideOf(face, pos, bp, bb) {
+	return face === "left" ? pos.x <= bp.x : face === "right" ? pos.x >= bp.x + bb.w : face === "top" ? pos.y <= bp.y : pos.y >= bp.y + bb.h;
+}
+
 // One contact between the ball and a box (a wall, or a player's pill). Returns true if they were touching.
 // Note the ball's `pos` is its CENTRE, while a box's `pos` is its top-left corner.
 function contactBox(pos, vel, ball, id, bp, bb, prev) {
@@ -421,6 +459,19 @@ function contactBox(pos, vel, ball, id, bp, bb, prev) {
 	const pill = components.body.has(id);
 	const rad = pill ? bb.w / 2 : 0;
 	const reach = ball.r + rad;
+	if (!pill) {
+		// Squeezed clean THROUGH a wall this step? A player (or a bubble, or a ramp pushing out) can shove the centre
+		// past a 2px wall in one go, and then the nearest face is the FAR one: the wall would push it on, out of the
+		// arena. If the centre's path since `prev` crossed this wall, it goes back on the side it came in by.
+		const face = entryFace(prev, pos, bp, bb);
+		if (face && !onSideOf(face, pos, bp, bb)) {
+			const [fx, fy] = FACE_NORMALS[face];
+			const cxF = fx < 0 ? bp.x : fx > 0 ? bp.x + bb.w : Math.max(bp.x, Math.min(pos.x, bp.x + bb.w));
+			const cyF = fy < 0 ? bp.y : fy > 0 ? bp.y + bb.h : Math.max(bp.y, Math.min(pos.y, bp.y + bb.h));
+			bounceOff(pos, vel, ball, cxF, cyF, fx, fy, reach, components.vel?.get(id) ?? NOT_MOVING);
+			return true;
+		}
+	}
 	let cx = pill ? bp.x + rad : Math.max(bp.x, Math.min(pos.x, bp.x + bb.w));
 	let cy = pill
 		? Math.max(bp.y + rad, Math.min(pos.y, bp.y + bb.h - rad))
@@ -459,8 +510,15 @@ function contactBox(pos, vel, ball, id, bp, bb, prev) {
 
 // One contact between the ball and a ramp / quarter-pipe. Unlike a box, the ball's centre can be INSIDE the solid
 // (it reached the surface, or got shoved past it); polygonContact knows that and gives a normal that points OUT.
-function contactSlope(pos, vel, ball, s) {
-	const c = polygonContact(s.pts, pos.x, pos.y);
+function contactSlope(pos, vel, ball, s, prev) {
+	// Shoved clean THROUGH the ramp this step (across a quarter-pipe's thin tip, say)? Back on the side it came in by,
+	// as with walls (contactBox).
+	const through = throughPolygon(s.pts, prev, pos);
+	if (through) {
+		bounceOff(pos, vel, ball, through.x, through.y, through.nx, through.ny, ball.r, NOT_MOVING);
+		return true;
+	}
+	const c = polygonContact(s.pts, pos.x, pos.y, prev); // prev: so a ball shoved in leaves the way it came, not out the back
 	if (!c.inside && c.dist >= ball.r - 1e-4) return false;
 	bounceOff(pos, vel, ball, c.x, c.y, c.nx, c.ny, ball.r, NOT_MOVING);
 	return true;
@@ -475,7 +533,7 @@ function resolveBall(pos, vel, ball, prev) {
 	for (let pass = 0; pass < 3; pass++) {
 		let touched = false;
 		for (const [id, bp, bb] of players) touched = contactBox(pos, vel, ball, id, bp, bb, prev) || touched;
-		for (const [, s] of query("slope")) touched = contactSlope(pos, vel, ball, s) || touched;
+		for (const [, s] of query("slope")) touched = contactSlope(pos, vel, ball, s, prev) || touched;
 		for (const [id, bp, bb] of walls) touched = contactBox(pos, vel, ball, id, bp, bb, prev) || touched;
 		if (!touched) break;
 	}

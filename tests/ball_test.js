@@ -195,10 +195,11 @@ function popScenario(label, levelJson, ballAt, bubbleAt, inSolid) {
   // 2. the old moveBall: steps measured from the original start, forgetting any push-back
   const floor2 = JSON.stringify({ ...classic, walls: [{ x: 0, y: 968, w: 1920, h: 2 }], slopes: [] });
   const run = makeWorld(floor2);
+  run('entryFace = () => null;'); // and without the wall-crossing guard, which on its own now catches this too
   run(`moveBall = (pos, vel, ball, tx, ty) => { const sx = pos.x, sy = pos.y, steps = Math.max(1, Math.ceil(Math.hypot(tx - sx, ty - sy) / 4));
     for (let i = 1; i <= steps; i++) { const prev = { x: pos.x, y: pos.y }; pos.x = sx + ((tx - sx) * i) / steps; pos.y = sy + ((ty - sy) * i) / steps; resolveBall(pos, vel, ball, prev); } };`);
   run('ball(600, 946); spawn({ pos: { x: 600, y: 900 }, circle: { r: 50 }, bubble: { solid: true, t: 2, max: 2 }, look: { color: "#fff" } }); bubbleSystem();');
-  check('MUTANT (old moveBall): the same pop throws the ball through the 2px floor, so the pop tests above would fail', JSON.parse(run('JSON.stringify(at())'))[1] > 970, JSON.stringify(run('at()')));
+  check('MUTANT (old moveBall, no wall-crossing guard): the same pop throws the ball through the 2px floor, so the pop tests above would fail', JSON.parse(run('JSON.stringify(at())'))[1] > 970, JSON.stringify(run('at()')));
 }
 {
   // 3. no bubble glide at all (the original teleport)
