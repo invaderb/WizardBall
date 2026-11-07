@@ -76,13 +76,17 @@ addEventListener("keydown", (e) => {
 });
 addEventListener("keyup", (e) => down.delete(e.code));
 
-// What the local keyboard is asking for. Online, either player's keys work, since each machine has one player.
+// The on-screen buttons on phones (touch.js) hold these pseudo-keys in the same down / pressed sets as real keys.
+// They play as player 1: the human vs the computer, this machine's player online, blue on a shared screen.
+const TOUCH = { left: "TouchLeft", right: "TouchRight", jump: "TouchJump" };
+
+// What the local keyboard (and touch buttons) are asking for. Online, either player's keys work, since each machine has one player.
 function localInput() {
 	const all = [...query("controls")].map(([, c]) => c);
 	return {
-		left: all.some((c) => down.has(c.left)),
-		right: all.some((c) => down.has(c.right)),
-		jump: all.some((c) => pressed.has(c.jump)), // an edge: true only on the step the key went down
+		left: down.has(TOUCH.left) || all.some((c) => down.has(c.left)),
+		right: down.has(TOUCH.right) || all.some((c) => down.has(c.right)),
+		jump: pressed.has(TOUCH.jump) || all.some((c) => pressed.has(c.jump)), // an edge: true only on the step the key went down
 	};
 }
 
@@ -95,12 +99,14 @@ function fillInputs() {
 		if (c.slot === ai.slot) inputs[c.slot] = aiInput(c.slot);
 		else if (ai.slot >= 0)
 			inputs[c.slot] = localInput(); // vs the computer: the human can use either key set
-		else if (net.mode === "local")
+		else if (net.mode === "local") {
+			const touch = c.slot === 0; // the touch buttons play blue
 			inputs[c.slot] = {
-				left: down.has(c.left),
-				right: down.has(c.right),
-				jump: pressed.has(c.jump),
+				left: down.has(c.left) || (touch && down.has(TOUCH.left)),
+				right: down.has(c.right) || (touch && down.has(TOUCH.right)),
+				jump: pressed.has(c.jump) || (touch && pressed.has(TOUCH.jump)),
 			};
+		}
 		else inputs[c.slot] = c.slot === net.localSlot ? localInput() : net.remote;
 	}
 }

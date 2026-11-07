@@ -2,17 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!-- Phones: lay out at the screen's real width (not a shrunk desktop page), no pinch / double-tap zoom (a double tap is the
+       slide), and use the whole screen round a notch (the touch buttons keep clear of it with safe-area insets). -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>WizardBall</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=MedievalSharp&family=Press+Start+2P&display=swap">
   <!-- The title-screen font: Wizard by Graphiqa Studio. DEMO, PERSONAL USE ONLY (see fonts/Wizard-READ-ME.txt). -->
   <link rel="preload" href="fonts/Wizard.ttf" as="font" type="font/ttf" crossorigin>
   <style>
     @font-face { font-family: 'Wizard'; src: url('fonts/Wizard.ttf') format('truetype'); font-display: swap; }
-    html, body { margin: 0; height: 100%; background: #000; }
-    canvas { width: 100vw; height: 100vh; object-fit: contain; display: block; }
+    /* Nothing scrolls or zooms under a finger: the page is exactly the screen. (The title screen scrolls itself, up and
+       down only, if it doesn't fit: see #title.) */
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; overscroll-behavior: none; touch-action: none; }
+    /* The arena fills the screen in either orientation, letterboxed to keep its shape. 100dvh is the height you can SEE on
+       a phone (100vh includes the space under the address bar, which made the page scroll); 100vh is the fallback. */
+    canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; object-fit: contain; display: block; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 
     /* Title screen: sits over the arena, which stays visible (dimmed) behind it. */
-    #title { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; overflow-y: auto; padding: 16px 0; gap: 22px; background: rgba(0, 0, 0, 0.82); color: #fff; font-family: 'Wizard', 'MedievalSharp', 'Palatino Linotype', serif; }
+    #title { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; overflow-y: auto; overflow-x: hidden; touch-action: pan-y; overscroll-behavior: contain; padding: 16px 0; gap: 22px; background: rgba(0, 0, 0, 0.82); color: #fff; font-family: 'Wizard', 'MedievalSharp', 'Palatino Linotype', serif; }
     #title[hidden] { display: none; }
     /* Auto-margined ends centre everything when it fits and let the page scroll when it doesn't. */
     #title::before, #title::after { content: ''; margin: auto; }
@@ -33,7 +40,7 @@
 
     /* The Options dialog (level select, paste/copy JSON, link to the builder) and the level name on the menu */
     .level-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 20px; color: #ccc; }
-    #options-dialog { width: min(520px, 92vw); padding: 20px; background: #000; color: #fff; border: 2px solid #fff; font-family: inherit; }
+    #options-dialog { width: min(520px, 92vw); max-height: 90dvh; overflow-y: auto; touch-action: pan-y; padding: 20px; background: #000; color: #fff; border: 2px solid #fff; font-family: inherit; }
     #options-dialog::backdrop { background: rgba(0, 0, 0, 0.7); }
     #options-dialog h2 { margin: 0 0 12px; font-weight: 400; font-size: 28px; }
     #options-dialog .level { margin-bottom: 14px; }
@@ -60,10 +67,36 @@
     .game .info { flex: 1; min-width: 200px; }
     .game .code { letter-spacing: 3px; color: #8f8; }
     .games-note { margin: 0; font-size: 16px; color: #888; }
+
+    /* Touch controls (touch.js): touch screens only, and under the title screen (z-index 20), so they show in a game.
+       Grey and mostly see-through, so they don't hide the arena. Sized from the screen's short side, kept clear of
+       notches and home bars with the safe-area insets. */
+    #touch { display: none; }
+    @media (hover: none) and (pointer: coarse) {
+      #touch { display: block; position: fixed; inset: 0; z-index: 10; pointer-events: none; --b: clamp(60px, 17vmin, 120px); --gap: 3vmin; }
+    }
+    #touch button {
+      position: absolute; width: var(--b); height: var(--b); padding: 0; border-radius: 50%; pointer-events: auto;
+      background: rgba(128, 128, 128, 0.18); border: 2px solid rgba(200, 200, 200, 0.3); color: rgba(255, 255, 255, 0.45);
+      font-size: calc(var(--b) * 0.36); line-height: 1; touch-action: none;
+      user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+    }
+    /* (each button's own rule is "#touch #id" so it outranks "#touch button" above: sizes for jump and menu) */
+    #touch button.on { background: rgba(160, 160, 160, 0.38); border-color: rgba(230, 230, 230, 0.5); }
+    #touch #touch-left { left: calc(var(--gap) + env(safe-area-inset-left)); bottom: calc(var(--gap) + env(safe-area-inset-bottom)); }
+    #touch #touch-right { left: calc(var(--gap) * 2 + var(--b) + env(safe-area-inset-left)); bottom: calc(var(--gap) + env(safe-area-inset-bottom)); }
+    #touch #touch-jump { right: calc(var(--gap) + env(safe-area-inset-right)); bottom: calc(var(--gap) + env(safe-area-inset-bottom)); width: calc(var(--b) * 1.25); height: calc(var(--b) * 1.25); }
+    #touch #touch-menu { left: calc(var(--gap) + env(safe-area-inset-left)); top: calc(var(--gap) + env(safe-area-inset-top)); width: calc(var(--b) * 0.5); height: calc(var(--b) * 0.5); font-size: calc(var(--b) * 0.22); }
   </style>
 </head>
 <body>
   <canvas id="c" width="1920" height="1000"></canvas>
+  <div id="touch">
+    <button type="button" id="touch-menu" data-touch="menu" aria-label="Back to the menu">&#9776;</button>
+    <button type="button" id="touch-left" data-touch="left" aria-label="Left">&#9664;</button>
+    <button type="button" id="touch-right" data-touch="right" aria-label="Right">&#9654;</button>
+    <button type="button" id="touch-jump" data-touch="jump" aria-label="Jump">&#9650;</button>
+  </div>
   <div id="title">
     <h1>WizardBall</h1>
     <div id="menu">
@@ -125,6 +158,7 @@
   <script src="online.js?v=2"></script>
   <script src="ai.js?v=2"></script>
   <script src="title.js?v=2"></script>
+  <script src="touch.js?v=2"></script>
   <!-- ?v=: the live host lets browsers cache scripts for 4 hours, and the scripts depend on each other, so every script tag on both pages (index.html, builder.html) carries the same number: bump it on all of them whenever you deploy a change -->
 </body>
 </html>

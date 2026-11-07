@@ -130,12 +130,13 @@ $('ai-btn').onclick = () => {
   closeTitle();
 };
 
-// Esc during a game: back to the menu, leaving any online game.
-addEventListener('keydown', (e) => {
-  if (e.code !== 'Escape' || menu.open) return;
+// Esc (or the touch menu button, touch.js) during a game: back to the menu, leaving any online game.
+function backToMenu() {
+  if (menu.open) return;
   leaveOnline();
   openTitle();
-});
+}
+addEventListener('keydown', (e) => { if (e.code === 'Escape') backToMenu(); });
 
 // Left / right arrow (or the arrow buttons beside "Level:") on the title screen: the previous / next level, from the
 // same list as Options (wrapping round), so you don't have to open Options to change it.
