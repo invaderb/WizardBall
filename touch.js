@@ -12,7 +12,9 @@ let touchHeld = new Set(); // the buttons ('left' | 'right' | 'jump' | 'menu') u
 function touchUpdate(touches) {
   const now = new Set();
   for (const t of touches) {
-    const button = document.elementFromPoint(t.clientX, t.clientY)?.closest?.('[data-touch]');
+    // what's under the finger now (so it can slide between buttons), else the button it went down on: Firefox for
+    // Android's bottom toolbar can offset elementFromPoint from what you see, which made the bottom buttons miss
+    const button = document.elementFromPoint(t.clientX, t.clientY)?.closest?.('[data-touch]') ?? t.target?.closest?.('[data-touch]');
     if (button) now.add(button.dataset.touch);
   }
   for (const b of now)
@@ -40,3 +42,8 @@ for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel'])
     e.preventDefault(); // in a game: no scrolling, zooming or long-press menus
     touchUpdate(e.touches);
   }, { passive: false });
+
+// Belt and braces for what preventDefault on touches doesn't stop everywhere: pinch zoom (Safari's gesture events),
+// and in a game, text selection and long-press menus (Firefox for Android's select / search / find-in-page bar).
+for (const type of ['gesturestart', 'gesturechange']) addEventListener(type, (e) => e.preventDefault(), { passive: false });
+for (const type of ['selectstart', 'contextmenu']) addEventListener(type, (e) => { if (!menu.open) e.preventDefault(); });

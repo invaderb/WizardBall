@@ -43,6 +43,14 @@ check('all fingers up: nothing held, nothing lit', input() === '{"left":false,"r
 fingers('touchstart', null);
 check('a finger on the arena (not a button) does nothing, but still does not scroll the page', input() === '{"left":false,"right":false,"jump":false}' && fingers('touchmove', null) === true);
 fingers('touchend');
+{ // Firefox for Android: elementFromPoint can be offset from what you see (its bottom toolbar), so the point misses
+  const e = { touches: [{ clientX: 999, clientY: 0, target: buttons.find((b) => b.dataset.touch === 'left') }], preventDefault() {} };
+  for (const f of listeners.touchstart) f(e);
+  check('a finger whose point misses every button still presses the one it went down on', input() === '{"left":true,"right":false,"jump":false}', input());
+  fingers('touchend');
+}
+const blocks = (type) => { let blocked = false; for (const f of listeners[type] ?? []) f({ preventDefault() { blocked = true; } }); return blocked; };
+check('in a game, no text selection or long-press menu (Firefox\'s select / search bar), and no pinch zoom (Safari)', blocks('selectstart') && blocks('contextmenu') && blocks('gesturestart'));
 
 // the slide: a double tap on > drives the same double-tap detection as the keyboard
 run('resetSystem(); for (let i = 0; i < 20; i++) { fillInputs(); controlSystem(); physicsSystem(); pressed.clear(); }'); // standing
