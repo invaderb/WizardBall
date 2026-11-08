@@ -90,7 +90,8 @@
     #touch #touch-left { left: calc(var(--gap) + env(safe-area-inset-left)); bottom: calc(var(--gap) + env(safe-area-inset-bottom)); }
     #touch #touch-right { left: calc(var(--gap) * 2 + var(--b) + env(safe-area-inset-left)); bottom: calc(var(--gap) + env(safe-area-inset-bottom)); }
     #touch #touch-jump { right: calc(var(--gap) + env(safe-area-inset-right)); bottom: calc(var(--gap) + env(safe-area-inset-bottom)); width: calc(var(--b) * 1.25); height: calc(var(--b) * 1.25); }
-    #touch #touch-menu { left: calc(var(--gap) + env(safe-area-inset-left)); top: calc(var(--gap) + env(safe-area-inset-top)); width: calc(var(--b) * 0.5); height: calc(var(--b) * 0.5); font-size: calc(var(--b) * 0.22); }
+    /* iOS holds back touches near the top edge of the screen (a swipe down from there is Notification Center), so keep it 28px+ clear */
+    #touch #touch-menu { left: calc(var(--gap) + env(safe-area-inset-left)); top: calc(var(--gap) + max(28px, env(safe-area-inset-top))); width: calc(var(--b) * 0.6); height: calc(var(--b) * 0.6); font-size: calc(var(--b) * 0.26); }
   </style>
 </head>
 <body>
