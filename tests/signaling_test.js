@@ -78,6 +78,11 @@ async function main() {
     // ---- static files ----
     const index = await raw('/');
     check('GET / serves the game', index.status === 200 && index.body.includes('WizardBall'));
+    // Safari won't play an <audio> (the music) from a server that ignores byte ranges
+    const part = await fetch(BASE + '/index.html', { headers: { Range: 'bytes=0-14' } });
+    check('a byte range gets just those bytes (206), so iPhones play the music', part.status === 206 && (await part.text()) === '<!DOCTYPE html>' && /^bytes 0-14\/\d+$/.test(part.headers.get('content-range')), String(part.status));
+    const past = await fetch(BASE + '/index.html', { headers: { Range: 'bytes=99999999-' } });
+    check('...and a range past the end is refused (416)', past.status === 416);
     check('GET /main.js', (await raw('/main.js')).status === 200);
     check('server.js is not served', (await raw('/server.js')).status === 404);
     check('README.md (unknown type) not served', (await raw('/README.md')).status === 404);

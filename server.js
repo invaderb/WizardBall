@@ -205,7 +205,7 @@ async function api(req, res, parts, ip) {
   return reply(404, { error: 'not found' });
 }
 
-function serveFile(res, pathname) {
+function serveFile(req, res, pathname) {
   const file = path.join(ROOT, pathname === '/' ? 'index.html' : decodeURIComponent(pathname));
   const type = TYPES[path.extname(file)];
   // Only known file types, only inside this folder (no ../), no dotfiles, not this script.
@@ -213,7 +213,18 @@ function serveFile(res, pathname) {
   if (!ok) { res.writeHead(404); return res.end('not found'); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end('not found'); }
-    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+    const headers = { 'Content-Type': type, 'Cache-Control': 'no-store', 'Accept-Ranges': 'bytes' };
+    // A byte range ("Range: bytes=0-1"): Safari asks for one before it will play an <audio> at all, and plays nothing
+    // from a server that answers with the whole file. Only the single-range form; anything else gets the whole file.
+    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+    if (m && (m[1] || m[2])) {
+      const start = m[1] ? Number(m[1]) : Math.max(0, data.length - Number(m[2])); // "-500" = the last 500 bytes
+      const end = m[1] && m[2] ? Math.min(Number(m[2]), data.length - 1) : data.length - 1;
+      if (start > end || start >= data.length) { res.writeHead(416, { 'Content-Range': `bytes */${data.length}` }); return res.end(); }
+      res.writeHead(206, { ...headers, 'Content-Range': `bytes ${start}-${end}/${data.length}` });
+      return res.end(data.subarray(start, end + 1));
+    }
+    res.writeHead(200, headers);
     res.end(data);
   });
 }
@@ -235,7 +246,7 @@ http.createServer(async (req, res) => {
     }
     if (isApi) return await api(req, res, parts, ip);
     if (req.method !== 'GET') { res.writeHead(405); return res.end(); }
-    serveFile(res, url.pathname);
+    serveFile(req, res, url.pathname);
   } catch (err) {
     if (!res.headersSent) res.writeHead(400);
     res.end(String(err.message));

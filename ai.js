@@ -1,4 +1,4 @@
-// The computer opponent. It plays by filling inputs[slot] with { left, right, jump }: exactly what the keyboard and
+// The computer opponent. It plays by filling inputs[slot] with { left, right, up, down, jump }: exactly what the keyboard and
 // the network produce, so the physics can't tell it from a person.
 //
 // Two layers:
@@ -16,14 +16,14 @@
 // beatable. Hard is superhuman on purpose: it thinks every step and meets the ball where it will be.
 
 const SKILLS = {
-  easy: { reaction: 0.30, lookahead: 0, intercept: false, jumpChance: 0.6, awareness: 0.4, mistake: 0.12, slide: 0 },
-  normal: { reaction: 0.12, lookahead: 0.25, intercept: false, jumpChance: 0.85, awareness: 0.8, mistake: 0.03, slide: 0.3 },
-  hard: { reaction: 0, lookahead: 0, intercept: true, jumpChance: 1, awareness: 1, mistake: 0, slide: 1 },
+  easy: { reaction: 0.30, lookahead: 0, intercept: false, jumpChance: 0.6, awareness: 0.4, mistake: 0.12, slide: 0, dive: 0 },
+  normal: { reaction: 0.12, lookahead: 0.25, intercept: false, jumpChance: 0.85, awareness: 0.8, mistake: 0.03, slide: 0.3, dive: 0.5 },
+  hard: { reaction: 0, lookahead: 0, intercept: true, jumpChance: 1, awareness: 1, mistake: 0, slide: 1, dive: 1 },
 };
 
 const aiMem = {};
 function aiReset() {
-  Object.assign(aiMem, { clock: 0, nextThink: 0, left: false, right: false, jump: false, lastAirJump: -1, lastX: 0, lastDir: 0, branch: '', path: [], route: null, tap: [] });
+  Object.assign(aiMem, { clock: 0, nextThink: 0, left: false, right: false, jump: false, lastAirJump: -1, jumpDir: null, down: false, lastX: 0, lastDir: 0, branch: '', path: [], route: null, tap: [] });
   buildNav(); // the level may have changed since the last game
 }
 
@@ -35,11 +35,15 @@ function aiInput(slot) {
     aiMem.nextThink = aiMem.clock + skill.reaction * (0.7 + Math.random() * 0.6); // jitter: not a metronome
     aiThink(slot, skill);
   }
-  const input = { left: aiMem.left, right: aiMem.right, jump: aiMem.jump };
+  const input = { left: aiMem.left, right: aiMem.right, up: false, down: aiMem.jump && aiMem.down, jump: aiMem.jump };
   if (aiMem.tap.length) { // playing out a double tap (see wantsSlide): this step's left/right comes from the sequence
     const t = aiMem.tap.shift();
     input.left = t < 0;
     input.right = t > 0;
+  }
+  if (aiMem.jump && aiMem.jumpDir !== null) { // an air jump aims with the stick: for this one step, point it the way it should go
+    input.left = aiMem.jumpDir < 0;
+    input.right = aiMem.jumpDir > 0;
   }
   aiMem.jump = false; // a jump is a one-step edge, like a key press
   return input;
@@ -204,6 +208,17 @@ function wantsSlide(bb) {
   return !(goingRound && ahead > 0 && ahead < 350 && Math.abs(bb.bp.y - bb.my) < 120);
 }
 
+// Dive? In the air, with the route dropping well below me: an air jump down (or down and across, toward where it's
+// going) gets there sooner than falling. Not near the ball: the dive drops a bubble, which would knock it anywhere.
+// Returns the sideways part of the dive (-1, 0, 1), or null for no dive.
+function diveDir(bb) {
+  if (bb.body.grounded || bb.vel.y > 300 || !bb.path.length) return null; // (already falling fast: no need)
+  const k = bb.path[Math.min(5, bb.path.length - 1)];
+  const tx = (k % nav.cols) * CELL + NAV_BOX.w / 2, ty = Math.floor(k / nav.cols) * CELL + NAV_BOX.h / 2;
+  if (ty < bb.my + 100 || Math.hypot(bb.bp.x - bb.mx, bb.bp.y - bb.my) < 140) return null;
+  return Math.abs(tx - bb.mx) > 60 ? Math.sign(tx - bb.mx) : 0;
+}
+
 // ---------- What to do: the behaviour tree ----------
 // Every node is a function of the blackboard `bb` that succeeds (true) or fails (false).
 //   selector: try children in order until one succeeds.   sequence: run children in order while they succeed.
@@ -352,9 +367,19 @@ function aiThink(slot, skill) {
   aiMem.lastDir = bb.dir;
 
   // No bubble spam: air jumps (each drops a bubble) at most every 0.3s. Ground jumps drop none, so they're free.
-  const jump = (bb.hop || bb.strike) && (bb.body.grounded || aiMem.clock - aiMem.lastAirJump > 0.3);
+  const canAirJump = aiMem.clock - aiMem.lastAirJump > 0.3;
+  const jump = (bb.hop || bb.strike) && (bb.body.grounded || canAirJump);
+  const dive = !jump && canAirJump && Math.random() < skill.dive ? diveDir(bb) : null;
   aiMem.left = bb.dir < 0;
   aiMem.right = bb.dir > 0;
+  // Air jumps aim (main.js controlSystem). A hop or a kick goes straight up, as it always has: that's what the route
+  // planning and the kick lining-up expect (the bubble does the kicking, not the jump). A dive goes down.
+  aiMem.down = dive !== null;
+  aiMem.jumpDir = bb.body.grounded ? null : dive ?? 0;
+  if (dive !== null) {
+    aiMem.jump = true;
+    aiMem.lastAirJump = aiMem.clock;
+  }
   if (jump) {
     aiMem.jump = true;
     if (!bb.body.grounded) aiMem.lastAirJump = aiMem.clock;

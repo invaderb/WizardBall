@@ -32,7 +32,8 @@ function makeWorld(level, source = realSrc) {
   const run = makeWorld(PIPES_ARENA);
   // top-right corner of the Simple arena: the ceiling quarter-pipe (1616,34, 206x192, thick end right) with the hairline bar y 32..34 above it.
   // The player is up against the curve, one step after being blocked from moving right (its head 0.1px under the surface), and taps jump.
-  run('put(1630.4, 39.0, 0, 8); step(1, true);');
+  // (Its jump's upward speed is given directly: holding right while jumping in the air is now a sideways dash, not up-and-right.)
+  run('put(1630.4, 39.0, 0, -620); step(1, false);');
   const [x, y, vy] = JSON.parse(run('JSON.stringify([P[1].x, P[1].y, P[3].y])'));
   const surface = JSON.parse(run('JSON.stringify(slopeY([...query("slope")].find((e) => e[1].ceiling && e[1].x === 1616)[1], P[1].x + 32))'));
   check('jumping up into the curve under the flush hairline bar: the head stops AT the curve (not 6px inside it)', run(`insideCount(${x}, ${y})`) < 2 && y >= surface - 0.5, `y=${y.toFixed(2)} surface=${surface.toFixed(2)} inside points=${run(`insideCount(${x}, ${y})`)}`);
@@ -45,8 +46,9 @@ function makeWorld(level, source = realSrc) {
 // ===================== the same situation in the other corners and orientations =====================
 {
   // every corner of the Simple arena: the player jams itself into the corner with a held direction and repeated jumps
+  // (from a start clear of the pipes: 880 overlapped the bottom ones, which only passed because a jump always went up)
   const run = makeWorld(PIPES_ARENA);
-  const corners = [['top-left', 130, 60, -1], ['top-right', 1760, 60, 1], ['bottom-left', 140, 880, -1], ['bottom-right', 1740, 880, 1]];
+  const corners = [['top-left', 130, 60, -1], ['top-right', 1760, 60, 1], ['bottom-left', 140, 850, -1], ['bottom-right', 1740, 860, 1]];
   let bad = [];
   for (const [name, x, y, dir] of corners) {
     run(`put(${x}, ${y}, 0, 0);`);
@@ -85,7 +87,7 @@ function cornerFuzz(run, seed, trials) {
     const mutantRun = makeWorld(PIPES_ARENA, oldRule);
     const mutantBad = cornerFuzz(mutantRun, 99, 300);
     check('MUTANT (the old "only if moving up" rule): the very same fuzz DOES catch players stuck inside the curve, so the check above has teeth', mutantBad > 0, `${mutantBad}/300 stuck with the old rule`);
-    mutantRun('put(1630.4, 39.0, 0, 8); step(1, true);');
+    mutantRun('put(1630.4, 39.0, 0, -620); step(1, false);');
     check('MUTANT: and the exact scenario shows the head 5+px inside the curve', mutantRun('insideCount(P[1].x, P[1].y)') >= 2, `inside points=${mutantRun('insideCount(P[1].x, P[1].y)')}`);
   }
 }

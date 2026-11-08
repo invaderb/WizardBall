@@ -5,7 +5,7 @@
 // The host keeps a separate connection (a "peer") to each person who joins: at most one PLAYER, who
 // also sends their keys, plus any number of WATCHERS, who only receive.
 //
-//   player --{t:'in', left, right, jump}-->  host     (reliable channel, ~60/s)
+//   player --{t:'in', left, right, up, down, jump}-->  host     (reliable channel, ~60/s)
 //   host   --{t:'snap', ...positions...}-->  everyone (unreliable channel, ~60/s)
 //   host   --{t:'level', level}-->           everyone (once, when they connect)
 //
@@ -109,6 +109,8 @@ function onHostMessage(peer, m) {
     if (m.t === 'in') {
       net.remote.left = Boolean(m.left);
       net.remote.right = Boolean(m.right);
+      net.remote.up = Boolean(m.up);
+      net.remote.down = Boolean(m.down);
       if (m.jump) net.remote.jump = true; // stays set until the first sim step consumes it
     } else if (m.t === 'rematch') pressed.add('KeyR');
   } catch (err) { console.error('bad message', err); }
@@ -215,7 +217,7 @@ function peerOpened(r, peer) {
     ai.slot = -1;
     net.mode = 'host';
     net.localSlot = 0;
-    net.remote.left = net.remote.right = net.remote.jump = false;
+    net.remote.left = net.remote.right = net.remote.up = net.remote.down = net.remote.jump = false;
     resetWorld(LEVEL);
     closeTitle();
   }

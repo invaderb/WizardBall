@@ -13,7 +13,16 @@ const SLIDE_SPEED = 900; // at the start of a slide
 const SLIDE_TIME = 0.4; // seconds
 const DOUBLE_TAP = 0.25; // seconds between the two presses
 const SLIDE_COOLDOWN = 0.3; // seconds after one ends before the next can start (no chaining them across the arena)
-const NO_SLIDE = { slide: 0, slideDir: 1, slideCool: 0, held: 0, tapDir: 0, tapAge: 9 }; // a player's slide state at spawn / reset
+const NO_SLIDE = { slide: 0, slideDir: 1, slideCool: 0, held: 0, tapDir: 0, tapAge: 9, aim: 0 }; // a player's slide (and aimed-jump) state at spawn / reset
+// Aimed air jumps: the stick's direction (8 ways; none = up) launches you that way at JUMP_SPEED. Two feel settings,
+// picked by playing (the defaults); still settable from the address bar to try others (?aimlock=0.1&sidelift=225):
+//   aimlock:  seconds the launch carries you before the stick steers again. 0 = steer at once (only up / down change);
+//             "full" = keep the launch until you land or air jump again.
+//   sidelift: upward speed of a straight sideways air jump. 0 = a flat dash; 225 = a low arc.
+const JUMP_SPEED = 620;
+const tuning = globalThis.location ? new URLSearchParams(location.search) : new Map(); // (no page in the tests)
+const AIM_LOCK = tuning.get("aimlock") === "full" ? Infinity : Number(tuning.get("aimlock") ?? 0.1) || 0;
+const SIDE_LIFT = Number(tuning.get("sidelift") ?? 225) || 0;
 const GRASS = "#fff";
 
 // A "resource": global state that isn't tied to any entity. round.t > 0 = countdown, world frozen.
@@ -30,7 +39,7 @@ const menu = { open: true };
 const net = {
 	mode: "local",
 	localSlot: 0,
-	remote: { left: false, right: false, jump: false },
+	remote: { left: false, right: false, up: false, down: false, jump: false },
 	tick: null,
 	spectating: false,
 	roomCode: "",
@@ -160,7 +169,9 @@ addEventListener("keyup", (e) => down.delete(e.code));
 
 // The on-screen buttons on phones (touch.js) hold these pseudo-keys in the same down / pressed sets as real keys.
 // They play as player 1: the human vs the computer, this machine's player online, blue on a shared screen.
-const TOUCH = { left: "TouchLeft", right: "TouchRight", jump: "TouchJump" };
+const TOUCH = { left: "TouchLeft", right: "TouchRight", up: "TouchUp", down: "TouchDown", jump: "TouchJump" };
+// Levels store only left / right / jump for each player; up / down go with the same side of the keyboard.
+const UP_DOWN = { KeyA: { up: "KeyW", down: "KeyS" }, ArrowLeft: { up: "ArrowUp", down: "ArrowDown" } };
 
 // What the local keyboard (and touch buttons) are asking for. Online, either player's keys work, since each machine has one player.
 function localInput() {
@@ -168,6 +179,8 @@ function localInput() {
 	return {
 		left: down.has(TOUCH.left) || all.some((c) => down.has(c.left)),
 		right: down.has(TOUCH.right) || all.some((c) => down.has(c.right)),
+		up: down.has(TOUCH.up) || all.some((c) => down.has(c.up)),
+		down: down.has(TOUCH.down) || all.some((c) => down.has(c.down)),
 		jump: pressed.has(TOUCH.jump) || all.some((c) => pressed.has(c.jump)), // an edge: true only on the step the key went down
 	};
 }
@@ -186,6 +199,8 @@ function fillInputs() {
 			inputs[c.slot] = {
 				left: down.has(c.left) || (touch && down.has(TOUCH.left)),
 				right: down.has(c.right) || (touch && down.has(TOUCH.right)),
+				up: down.has(c.up) || (touch && down.has(TOUCH.up)),
+				down: down.has(c.down) || (touch && down.has(TOUCH.down)),
 				jump: pressed.has(c.jump) || (touch && pressed.has(TOUCH.jump)),
 			};
 		}
@@ -248,14 +263,23 @@ function controlSystem() {
 			if (body.slide <= 0) body.slideCool = SLIDE_COOLDOWN;
 		} else {
 			body.slideCool -= DT;
-			vel.x = held * RUN_SPEED;
+			if (body.grounded) body.aim = 0; // landing ends an aimed jump's launch
+			if (body.aim > 0) body.aim -= DT; // still carried by it: the stick doesn't steer yet
+			else vel.x = held * RUN_SPEED;
 		}
 
 		if (input.jump) {
 			playSound("jump");
-			if (!body.grounded)
+			if (!body.grounded) {
 				placeBubble(body, pos, box, look.color); // air jump = bubble
-			else
+				// ...launched the way the stick points (the AI too: see aiThink).
+				const dx = held, dy = input.down - input.up;
+				if (dx === 0 && dy === 0) vel.y = -JUMP_SPEED;
+				else if (dy === 0) [vel.x, vel.y] = [dx * JUMP_SPEED, -SIDE_LIFT];
+				else [vel.x, vel.y] = [(dx * JUMP_SPEED) / Math.hypot(dx, dy), (dy * JUMP_SPEED) / Math.hypot(dx, dy)];
+				body.aim = dx === 0 ? 0 : AIM_LOCK; // straight up / down: nothing sideways to carry
+				continue;
+			} else
 				for (
 					let i = 0;
 					i < 14;
@@ -269,7 +293,7 @@ function controlSystem() {
 						"#fff",
 						0.5,
 					);
-			vel.y = -620; // ponytail: unlimited air jumps, like the original; add a limit if it feels broken
+			vel.y = -JUMP_SPEED; // a ground jump: always up. ponytail: unlimited air jumps, like the original; add a limit if it feels broken
 		}
 	}
 }
@@ -1176,7 +1200,7 @@ function loadLevel(level) {
 				vy: 0,
 				slide: false,
 			}, // for the sprite: starts facing the middle
-			controls: { ...p.keys, slot },
+			controls: { ...UP_DOWN[p.keys.left], ...p.keys, slot },
 			look: { color: p.color },
 			lives: { n: 3 },
 			hud: { ...p.hud },

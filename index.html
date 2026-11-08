@@ -102,8 +102,12 @@
     }
     /* (each button's own rule is "#touch #id" so it outranks "#touch button" above: sizes for jump and menu) */
     #touch button.on { background: rgba(160, 160, 160, 0.38); border-color: rgba(230, 230, 230, 0.5); }
-    #touch #touch-left { left: calc(var(--gap) + env(safe-area-inset-left)); bottom: calc(var(--gap) + env(safe-area-inset-bottom)); }
-    #touch #touch-right { left: calc(var(--gap) * 2 + var(--b) + env(safe-area-inset-left)); bottom: calc(var(--gap) + env(safe-area-inset-bottom)); }
+    /* The joystick rests at the bottom left; a thumb anywhere on the left half moves it there (touch.js sets left / top). */
+    #touch-stick { position: absolute; width: calc(var(--b) * 1.6); height: calc(var(--b) * 1.6); border-radius: 50%; pointer-events: none;
+      background: rgba(128, 128, 128, 0.12); border: 2px solid rgba(200, 200, 200, 0.3);
+      left: calc(var(--gap) + env(safe-area-inset-left)); bottom: calc(var(--gap) + env(safe-area-inset-bottom)); }
+    #touch-stick.on { bottom: auto; transform: translate(-50%, -50%); border-color: rgba(230, 230, 230, 0.5); }
+    #touch-stick > div { position: absolute; left: 25%; top: 25%; width: 50%; height: 50%; border-radius: 50%; background: rgba(200, 200, 200, 0.3); }
     #touch #touch-jump { right: calc(var(--gap) + env(safe-area-inset-right)); bottom: calc(var(--gap) + env(safe-area-inset-bottom)); width: calc(var(--b) * 1.25); height: calc(var(--b) * 1.25); }
     /* iOS holds back touches near the top edge of the screen (a swipe down from there is Notification Center), so keep it 28px+ clear */
     #touch #touch-menu { left: calc(var(--gap) + env(safe-area-inset-left)); top: calc(var(--gap) + max(28px, env(safe-area-inset-top))); width: calc(var(--b) * 0.6); height: calc(var(--b) * 0.6); font-size: calc(var(--b) * 0.26); }
@@ -113,8 +117,7 @@
   <canvas id="c" width="1920" height="1000"></canvas>
   <div id="touch">
     <button type="button" id="touch-menu" data-touch="menu" aria-label="Back to the menu">&#9776;</button>
-    <button type="button" id="touch-left" data-touch="left" aria-label="Left">&#9664;</button>
-    <button type="button" id="touch-right" data-touch="right" aria-label="Right">&#9654;</button>
+    <div id="touch-stick"><div></div></div>
     <button type="button" id="touch-jump" data-touch="jump" aria-label="Jump">&#9650;</button>
   </div>
   <div id="title">
@@ -171,7 +174,7 @@
       <label class="check"><input type="checkbox" id="sfx-cb" checked> Sound effects</label>
       <button type="button" id="options-close" class="small">Close</button>
     </dialog>
-    <p class="hint">Blue: A / D, Space &middot; Red: &larr; / &rarr;, Enter &middot; Esc: back to this menu</p>
+    <p class="hint">Blue: W A S D, Space &middot; Red: arrows, Enter &middot; Controllers: stick, A, Start &middot; Air jumps go the way you point &middot; Esc: back to this menu</p>
   </div>
   <script src="level.js?v=5"></script>
   <script src="sprites.js?v=5"></script>
@@ -181,6 +184,7 @@
   <script src="ai.js?v=5"></script>
   <script src="title.js?v=5"></script>
   <script src="touch.js?v=5"></script>
+  <script src="gamepad.js?v=5"></script>
   <!-- ?v=: the live host lets browsers cache scripts for 4 hours, and the scripts depend on each other, so every script tag on both pages (index.html, builder.html) carries the same number: bump it on all of them whenever you deploy a change -->
 </body>
 </html>
