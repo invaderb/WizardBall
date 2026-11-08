@@ -5,7 +5,7 @@
   <!-- Phones: lay out at the screen's real width (not a shrunk desktop page), no pinch / double-tap zoom (a double tap is the
        slide), and use the whole screen round a notch (the touch buttons keep clear of it with safe-area insets). -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <link rel="icon" href="favicon.svg?v=4" type="image/svg+xml">
+  <link rel="icon" href="favicon.svg?v=5" type="image/svg+xml">
   <title>WizardBall</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=MedievalSharp&family=Press+Start+2P&display=swap">
   <!-- The title-screen font: Wizard by Graphiqa Studio. DEMO, PERSONAL USE ONLY (see fonts/Wizard-READ-ME.txt). -->
@@ -30,6 +30,10 @@
     /* The blue and red offsets are the two players' colors splitting the title apart. */
     #title h1 { margin: 0; font-weight: 400; font-size: clamp(56px, 13vw, 160px); letter-spacing: 4px; text-shadow: -5px 0 #48f, 5px 0 #f44, 0 0 40px rgba(255, 255, 255, 0.25); }
     #menu { display: flex; flex-direction: column; gap: 14px; width: min(360px, 80vw); }
+    /* A wave runs through the title: each letter rises and falls in turn, then a pause. */
+    #title h1 span span { display: inline-block; animation: wave 2.5s ease-in-out calc(var(--i) * 0.1s) infinite; }
+    @keyframes wave { 0%, 16%, 100% { transform: translateY(0); } 8% { transform: translateY(-0.12em); } }
+    @media (prefers-reduced-motion: reduce) { #title h1 span span { animation: none; } }
     #title button { font: inherit; font-size: 26px; padding: 10px 18px; background: transparent; color: #fff; border: 2px solid #fff; cursor: pointer; }
     #title button:hover, #title button:focus-visible { background: #fff; color: #000; outline: none; }
     .ai { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
@@ -103,7 +107,7 @@
     <button type="button" id="touch-jump" data-touch="jump" aria-label="Jump">&#9650;</button>
   </div>
   <div id="title">
-    <h1>WizardBall</h1>
+    <h1 aria-label="WizardBall"><span aria-hidden="true"><span style="--i:0">W</span><span style="--i:1">i</span><span style="--i:2">z</span><span style="--i:3">a</span><span style="--i:4">r</span><span style="--i:5">d</span><span style="--i:6">B</span><span style="--i:7">a</span><span style="--i:8">l</span><span style="--i:9">l</span></span></h1>
     <div id="menu">
       <div class="level-row">
         <button type="button" id="level-prev" class="small" aria-label="Previous level" title="Previous level (Left arrow)">&#9664;</button>
@@ -152,18 +156,20 @@
         </div>
         <div id="level-msg" aria-live="polite"></div>
       </div>
+      <label class="check"><input type="checkbox" id="music-cb" checked> Music</label>
+      <label class="check"><input type="checkbox" id="sfx-cb" checked> Sound effects</label>
       <button type="button" id="options-close" class="small">Close</button>
     </dialog>
     <p class="hint">Blue: A / D, Space &middot; Red: &larr; / &rarr;, Enter &middot; Esc: back to this menu</p>
   </div>
-  <script src="level.js?v=4"></script>
-  <script src="sprites.js?v=4"></script>
-  <script src="net.js?v=4"></script>
-  <script src="main.js?v=4"></script>
-  <script src="online.js?v=4"></script>
-  <script src="ai.js?v=4"></script>
-  <script src="title.js?v=4"></script>
-  <script src="touch.js?v=4"></script>
+  <script src="level.js?v=5"></script>
+  <script src="sprites.js?v=5"></script>
+  <script src="net.js?v=5"></script>
+  <script src="main.js?v=5"></script>
+  <script src="online.js?v=5"></script>
+  <script src="ai.js?v=5"></script>
+  <script src="title.js?v=5"></script>
+  <script src="touch.js?v=5"></script>
   <!-- ?v=: the live host lets browsers cache scripts for 4 hours, and the scripts depend on each other, so every script tag on both pages (index.html, builder.html) carries the same number: bump it on all of them whenever you deploy a change -->
 </body>
 </html>

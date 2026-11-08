@@ -167,3 +167,14 @@ refreshGames();
   if (menu.open && !$('title').hidden) refreshGames();
   setTimeout(pollGames, 3000);
 })();
+
+// Options: music and sound effects on / off, remembered in this browser.
+for (const key of ['music', 'sfx']) {
+  const cb = $(`${key}-cb`);
+  soundOn[key] = cb.checked = localStorage.getItem(`wizardball-${key}`) !== 'off';
+  cb.onchange = () => {
+    soundOn[key] = cb.checked;
+    localStorage.setItem(`wizardball-${key}`, cb.checked ? 'on' : 'off');
+    musicSystem(); // stop / start the title music now
+  };
+}

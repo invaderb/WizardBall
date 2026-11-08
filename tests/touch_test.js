@@ -58,6 +58,8 @@ const stepN = (n) => run(`for (let i = 0; i < ${n}; i++) { fillInputs(); control
 fingers('touchstart', 'right'); stepN(4); fingers('touchend'); stepN(4); fingers('touchstart', 'right'); stepN(1);
 check('double-tapping > slides (vs the computer / one player: blue)', run('[...query("body", "controls")].find((e) => e[2].slot === 0)[1].slide') > 0);
 fingers('touchend');
+run('sfx.length = 0'); fingers('touchstart', 'jump'); stepN(1); fingers('touchend');
+check('a jump plays the jump sound', run('sfx.join()') === 'jump', run('sfx.join()'));
 run('ai.slot = 1; ai.skill = "hard"; aiReset()'); // vs the computer, as the title button starts it: the human is blue (slot 0), red is the AI
 fingers('touchstart', 'left'); run('fillInputs()');
 check('vs the computer, holding < moves the human (blue), not the AI', run('inputs[0].left') === true);

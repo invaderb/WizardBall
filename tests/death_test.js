@@ -76,7 +76,8 @@ const STAND = 976 - makeWorld().run('PLAYER.h'); // a player standing on the flo
   run(`const bp0 = ${who(0)}[1]; bp0.x = 600; bp0.y = ${STAND}; ${who(0)}[3].x = 300; components.anim.get(${who(0)}[0]).facing = 1; components.spin.get(${who(0)}[0]).a = 1.2;`);
   run(`const rp0 = ${who(1)}[1]; rp0.x = 1500; rp0.y = ${STAND}; ${who(1)}[3].x = 200;`); // red is running when it scores
   run('for (const [, p, v] of query("pos","vel","circle")) { p.x = -50; p.y = 900; v.x = 0; v.y = 0; }');
-  run('goalSystem()');
+  run('sfx.length = 0; goalSystem()');
+  check('a goal plays the death sound (hurt + ghost), once', run('sfx.join()') === 'death', run('sfx.join()'));
   const victimId = run('round.beam.victims[0]'), blueId = run(`${who(0)}[0]`);
   check('blue (facing right) is the victim of a goal in red\'s net', victimId === blueId && run('round.beam.victims.length') === 1);
   check('NO explosion: the goal creates no burst particles', run('[...query("particle")].length') === 0, String(run('[...query("particle")].length')));
@@ -126,6 +127,33 @@ const STAND = 976 - makeWorld().run('PLAYER.h'); // a player standing on the flo
   for (let t = 300; t < 1500 && run('round.hit') > 0.05; t += 50) { run(`frame(${t})`); poses.push(run(`${who(1)}[5].air`)); }
   check('the scorer, standing when it went in, stays standing (not tucked in a ball) for the whole animation', poses.length > 5 && poses.every((air) => air === false), JSON.stringify(poses));
   check('...and is not spinning (the somersault is for jumps)', run(`components.spin.get(${who(1)}[0]).a`) === 0);
+}
+
+// ===================== the countdown beeps: 3, 2, 1, then a higher "go" =====================
+{
+  const w = makeWorld(), run = w.run;
+  run('menu.open = false; round.t = 0; frame(0); round.t = 3; var heard = []; const playReal = playSound; playSound = (n) => { heard.push(n); playReal(n); }');
+  for (let t = 10; t < 4000; t += 10) run(`frame(${t})`);
+  check('the countdown plays beep, beep, beep, go (once each)', run('heard.filter((n) => n === "beep" || n === "go").join()') === 'beep,beep,beep,go', run('heard.join()'));
+}
+
+// ===================== music: title, a random game track kept for the game, "last credit" on a last life =====================
+{
+  const w = makeWorld(), run = w.run;
+  const want = () => run('wantedTrack()');
+  run('menu.open = true');
+  const title = want();
+  run('menu.open = false');
+  const game = want();
+  check('title screen: the title track; a game: one of the game tracks', title === run('TITLE_TRACK') && run('GAME_TRACKS').includes(game), `${title} / ${game}`);
+  check('...and the same one for the whole game', [1, 2, 3, 4, 5].every(() => want() === game));
+  run('[...query("lives")][1][1].n = 1');
+  check('anyone down to their last life: "last credit"', want() === run('LAST_LIFE_TRACK'));
+  run('for (const [, l] of query("lives")) l.n = 3');
+  check('a rematch (lives back): the game track again', want() === game);
+  const picks = new Set();
+  for (let i = 0; i < 40; i++) { run('menu.open = true; wantedTrack(); menu.open = false'); picks.add(want()); }
+  check('each new game picks at random from all the game tracks', picks.size === 3, [...picks].join());
 }
 
 // ===================== rendering: it stays visible, topples, ignores the somersault =====================

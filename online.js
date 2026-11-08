@@ -53,7 +53,7 @@ function snapshot() {
     particles.push([id, Math.round(pos.x), Math.round(pos.y), r2(p.life), p.max, look.color, r1(p.r ?? 0)]); // r: a goal bubble's size (0 = a plain square)
   }
   const { t, hit, beam, winner } = round;
-  return { t: 'snap', seq: ++seq, players, ball, bubbles, particles, round: { t: r2(t), hit: r2(hit), beam, winner } };
+  return { t: 'snap', seq: ++seq, sfx, players, ball, bubbles, particles, round: { t: r2(t), hit: r2(hit), beam, winner } };
 }
 
 // ---------- Guest: apply a description ----------
@@ -86,6 +86,7 @@ function applySnapshot(m) {
   syncSet(m.bubbles, 'bubble', ([, x, y, r, color, fade]) => ({ pos: { x, y }, circle: { r }, bubble: { solid: false, t: fade, max: 1 }, look: { color } })); // solidity only matters on the host
   syncSet(m.particles, 'particle', ([, x, y, life, max, color, r]) => ({ pos: { x, y }, particle: { life, max, r }, look: { color } })); // the host moves them (sway included); we just draw
   Object.assign(round, m.round);
+  for (const name of m.sfx ?? []) if (Object.hasOwn(SOUNDS, name) || Object.hasOwn(TONES, name)) playSound(name); // only names we know: it's the host's data
 }
 
 // ---------- Messages ----------

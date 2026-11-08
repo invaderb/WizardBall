@@ -65,6 +65,88 @@ function* query(...names) {
 			yield [id, ...names.map((n) => components[n].get(id))];
 }
 
+// ---------- Sound ----------
+// Web Audio, not <audio>: iPhones only let an <audio> play from inside a tap, and the game's sounds come later.
+// The context starts suspended until the first tap / key, so it's resumed then. (No Web Audio = tests: silent.)
+const SOUNDS = { jump: ["jump_short.wav"], death: ["hurt.mp4", "ghost_low.mp4", "magical-spell-cast.mp4"] }; // death: the beam (spell cast), then the victim is hit
+const SOUND_RATE = {}; // playback speed: < 1 = slower AND lower pitched (0.5 = an octave down, twice as long)
+const SOUND_VOLUME = { "magical-spell-cast.mp4": 0.8 }; // 1 = as recorded
+const SOUND_DELAY = { "hurt.mp4": 0.5, "ghost_low.mp4": 0.5 }; // seconds: after the beam (spell cast) has got going
+const audio = typeof AudioContext === "undefined" ? null : new AudioContext();
+const soundBuffers = {};
+if (audio) {
+	for (const name of new Set(Object.values(SOUNDS).flat()))
+		fetch(`sounds/${name}`)
+			.then((r) => r.arrayBuffer())
+			.then((b) => audio.decodeAudioData(b))
+			.then((b) => (soundBuffers[name] = b))
+			.catch(() => {}); // a missing sound is just silence
+	for (const type of ["pointerdown", "touchend", "keydown"])
+		addEventListener(type, () => audio.state !== "running" && audio.resume());
+}
+const TONES = { beep: [660, 0.12], go: [1320, 0.3] }; // the countdown's blips, made here (no file): [Hz, seconds]
+const soundOn = { music: true, sfx: true }; // the Options checkboxes (title.js)
+const sfx = []; // sounds played this frame: the host sends them to online guests, who don't simulate
+function playSound(name) {
+	sfx.push(name); // sent to guests even if muted here: they have their own setting
+	if (!soundOn.sfx || !audio) return;
+	if (TONES[name]) {
+		const [hz, len] = TONES[name], t = audio.currentTime;
+		const osc = audio.createOscillator(), gain = audio.createGain();
+		osc.type = "square";
+		osc.frequency.value = hz;
+		gain.gain.setValueAtTime(0.12, t);
+		gain.gain.exponentialRampToValueAtTime(0.001, t + len); // a quick fade, so it doesn't click off
+		osc.connect(gain).connect(audio.destination);
+		osc.start(t);
+		osc.stop(t + len);
+		return;
+	}
+	for (const file of SOUNDS[name]) {
+		if (!soundBuffers[file]) continue;
+		const src = audio.createBufferSource();
+		src.buffer = soundBuffers[file];
+		src.playbackRate.value = SOUND_RATE[file] ?? 1;
+		const gain = audio.createGain();
+		gain.gain.value = SOUND_VOLUME[file] ?? 1;
+		src.connect(gain).connect(audio.destination);
+		src.start(audio.currentTime + (SOUND_DELAY[file] ?? 0));
+	}
+}
+
+// Music: one <audio> element, which streams (a 4-minute track decoded for Web Audio would be ~80MB). The title track on
+// the title screen; in a game, one of GAME_TRACKS picked at random for that game, and "last credit" once anyone is down
+// to their last life. One element whose track is swapped, not one per track: iPhones only let an element play on its
+// own once a tap has started it, and the first tap starts the title track. Browsers won't play anything before that
+// first tap / key, so it's tried then as well. Volume goes through Web Audio because iPhones ignore an <audio>'s own.
+const TITLE_TRACK = "slimeyfox-dark-arcadewave-phantom-80s-541566";
+const LAST_LIFE_TRACK = "slimeyfox-last-credit-remaining-485095";
+const GAME_TRACKS = ["alex-morgan-gaming-stream-arcade-session-578484", "slimeyfox-arcade-machinefun-558495", "slimeyfox-hyperarcade-madrampage-567522"];
+let gameTrack = null; // this game's track: picked when it starts, forgotten back on the title screen
+function wantedTrack() {
+	if (menu.open) {
+		gameTrack = null;
+		return TITLE_TRACK;
+	}
+	gameTrack ??= GAME_TRACKS[Math.floor(Math.random() * GAME_TRACKS.length)];
+	return [...query("lives")].some(([, l]) => l.n <= 1) ? LAST_LIFE_TRACK : gameTrack;
+}
+const music = typeof Audio === "undefined" ? null : Object.assign(new Audio(), { loop: true });
+if (music && audio) {
+	const gain = audio.createGain();
+	gain.gain.value = 0.5;
+	audio.createMediaElementSource(music).connect(gain).connect(audio.destination);
+}
+let musicTrack = null;
+function musicSystem() {
+	const want = wantedTrack();
+	if (!music) return;
+	if (!soundOn.music) return music.paused || music.pause(); // muted: resumes from here when turned back on
+	if (musicTrack !== want) music.src = `music/${(musicTrack = want)}.mp4`; // a new track starts from the top
+	if (music.paused) music.play().catch(() => {}); // refused until the first tap / key
+}
+for (const type of ["pointerdown", "touchend", "keydown"]) addEventListener(type, () => musicSystem());
+
 // ---------- Input ----------
 const down = new Set(); // keys currently held
 const pressed = new Set(); // keys that went down this frame (for jump)
@@ -170,6 +252,7 @@ function controlSystem() {
 		}
 
 		if (input.jump) {
+			playSound("jump");
 			if (!body.grounded)
 				placeBubble(body, pos, box, look.color); // air jump = bubble
 			else
@@ -854,6 +937,7 @@ function goalSystem() {
 			// Death animation: freeze play, a particle beam from the ball to the victims, and the victims are
 			// knocked back and fall over backwards (they keep their sprite: see drawWizard's `dead` pose).
 			round.hit = DEATH_TIME;
+			playSound("death");
 			round.beam = { color: glook.color, x: bpos.x, y: bpos.y, victims };
 			clock.scale = 1;
 			// Everyone stops where they are... (Not `grounded = false` as well: effectsSystem runs right after this step and
@@ -1147,8 +1231,13 @@ function frame(now) {
 				round.winner = null;
 				round.t = 3;
 			}
-		} else if (round.t > 0)
-			round.t -= DT; // countdown: skip every gameplay system
+		} else if (round.t > 0) {
+			// countdown: skip every gameplay system. A beep as each number (3, 2, 1) shows, and a higher one on "go".
+			const before = round.t;
+			round.t -= DT;
+			if (round.t <= 0) playSound("go");
+			else if (before === 3 || Math.ceil(round.t) !== Math.ceil(before)) playSound("beep");
+		}
 		else {
 			fillInputs();
 			controlSystem();
@@ -1167,6 +1256,8 @@ function frame(now) {
 		acc -= DT;
 	}
 	net.tick?.(); // online: host sends a snapshot, guest sends its input
+	sfx.length = 0; // sent (or not online): start the next frame's list
+	musicSystem();
 	renderSystem();
 	requestAnimationFrame(frame);
 }
