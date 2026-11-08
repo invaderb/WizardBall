@@ -7,7 +7,7 @@
 // Every finger is looked at on every change, not one button at a time, so you can hold a direction while tapping
 // jump, and slide a finger from left to right without lifting it.
 
-let touchHeld = new Set(); // the buttons ('left' | 'right' | 'jump' | 'menu') under a finger right now
+let touchHeld = new Set(); // the buttons ('left' | 'right' | 'jump') under a finger right now
 
 function touchUpdate(touches) {
   const now = new Set();
@@ -15,11 +15,10 @@ function touchUpdate(touches) {
     // what's under the finger now (so it can slide between buttons), else the button it went down on: Firefox for
     // Android's bottom toolbar can offset elementFromPoint from what you see, which made the bottom buttons miss
     const button = document.elementFromPoint(t.clientX, t.clientY)?.closest?.('[data-touch]') ?? t.target?.closest?.('[data-touch]');
-    if (button) now.add(button.dataset.touch);
+    if (button && button.dataset.touch !== 'menu') now.add(button.dataset.touch);
   }
   for (const b of now)
     if (!touchHeld.has(b)) { // a fresh press
-      if (b === 'menu') { touchRelease(); return backToMenu(); }
       down.add(TOUCH[b]);
       pressed.add(TOUCH[b]);
       if (b === 'jump' && round.winner) pressed.add('KeyR'); // game over: jump is "rematch"
@@ -39,9 +38,15 @@ function touchRelease() {
 for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel'])
   addEventListener(type, (e) => {
     if (menu.open) { if (touchHeld.size) touchRelease(); return; } // the title screen takes touches normally (taps, scrolling)
+    if (e.target?.closest?.('[data-touch="menu"]')) return; // left alone so the browser makes it a click (below)
     e.preventDefault(); // in a game: no scrolling, zooming or long-press menus
     touchUpdate(e.touches);
   }, { passive: false });
+
+// The menu button is a plain click, like the title screen's buttons: on iPhones (Safari and Firefox) it did nothing
+// when pressed from the touch handler above, while ordinary buttons always worked.
+for (const el of document.querySelectorAll('[data-touch]'))
+  if (el.dataset.touch === 'menu') el.onclick = () => { touchRelease(); backToMenu(); };
 
 // Belt and braces for what preventDefault on touches doesn't stop everywhere: pinch zoom (Safari's gesture events),
 // and in a game, text selection and long-press menus (Firefox for Android's select / search / find-in-page bar).

@@ -72,8 +72,12 @@ run('round.winner = null; pressed.clear()');
 
 // the menu button, and the title screen taking touches normally
 fingers('touchstart', 'right');
-fingers('touchstart', 'right', 'menu');
-check('the menu button goes back to the menu, letting go of everything held', run('backed') === 1 && run('down.size') === 0 && lit() === '');
+const menuBtn = buttons.find((b) => b.dataset.touch === 'menu');
+let menuBlocked = false;
+for (const f of listeners.touchstart) f({ touches: [at('right'), { ...at('menu'), target: menuBtn }], target: menuBtn, preventDefault() { menuBlocked = true; } });
+check('a touch on the menu button is left to the browser (so it becomes a click: on iPhones it did nothing otherwise)', !menuBlocked && run('backed') === 0);
+menuBtn.onclick();
+check('...and the click goes back to the menu, letting go of everything held', run('backed') === 1 && run('down.size') === 0 && lit() === '');
 fingers('touchend');
 check('on the title screen, touches are left alone (taps, scrolling the menu)', fingers('touchstart', 'right') === false && run('down.size') === 0);
 fingers('touchend');
