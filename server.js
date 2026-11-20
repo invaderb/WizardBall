@@ -66,6 +66,29 @@ setInterval(() => { // forget addresses that have been quiet long enough to be f
 // Behind Cloudflare, CF-Connecting-IP is set by Cloudflare itself; X-Forwarded-For's first entry is whatever the client sent.
 const clientIp = (req) => (TRUST_PROXY && (req.headers['cf-connecting-ip'] ?? req.headers['x-forwarded-for']?.split(',')[0].trim())) || req.socket.remoteAddress;
 
+// TURN relay (Cloudflare). When two browsers can't connect directly (hidden .local addresses, corporate firewalls,
+// routers that won't loop traffic back in) WebRTC relays through TURN instead. The API token stays here: browsers
+// only get short-lived credentials. Without the env vars, players get STUN only (direct connections, as before).
+const TURN_KEY = process.env.CF_TURN_KEY_ID, TURN_TOKEN = process.env.CF_TURN_API_TOKEN;
+const STUN_ONLY = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+// Seconds a credential works: longer than any game (a relay drops when its credential expires), short enough that a
+// leaked one is soon useless. Each connection gets its own (only players in a room can ask: see /api/ice).
+const TURN_TTL = 4 * 60 * 60;
+async function iceServers() {
+  if (!TURN_KEY || !TURN_TOKEN) return STUN_ONLY;
+  const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(TURN_KEY)}/credentials/generate-ice-servers`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${TURN_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ttl: TURN_TTL }),
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) throw new Error(`Cloudflare TURN answered ${res.status}`);
+  const { iceServers: list } = await res.json();
+  if (!Array.isArray(list) || !list.length) throw new Error('Cloudflare TURN sent no servers');
+  // Cloudflare's docs: drop the port-53 URLs, browsers block or stall on them.
+  return { iceServers: list.map((s) => ({ ...s, urls: [].concat(s.urls).filter((u) => !/:53(\?|$)/.test(u)) })) };
+}
+
 function newCode() {
   for (;;) {
     const code = Array.from({ length: 4 }, () => LETTERS[Math.floor(Math.random() * LETTERS.length)]).join('');
@@ -108,11 +131,32 @@ function readBody(req) {
 //   guest  POST   /api/rooms/CODE/joins/ID/answer
 //   host   GET    /api/rooms/CODE/joins/ID/answer    -> { answer }             (polls; request is deleted once read)
 //   host   DELETE /api/rooms/CODE                    (close the room)
+//   host   GET    /api/ice?room=CODE                 -> { iceServers }  (STUN + TURN relay credentials for one connection)
+//   guest  GET    /api/ice?room=CODE&join=ID         -> { iceServers }  (only while that join is pending)
 async function api(req, res, parts, ip) {
   const reply = (status, obj) => {
     res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(obj));
   };
+  if (parts[1] === 'ice') {
+    if (req.method !== 'GET') return reply(405, { error: 'GET only' });
+    // Only our own pages (browsers label every request with where it came from; 'none' = typed in the address bar).
+    // No Access-Control-Allow-Origin either, so other sites can't read it. Doesn't stop curl: that's what the rate limit is for.
+    const site = req.headers['sec-fetch-site'], origin = req.headers.origin;
+    const host = (TRUST_PROXY && req.headers['x-forwarded-host']) || req.headers.host;
+    let foreign = site && site !== 'same-origin' && site !== 'none';
+    try { if (origin && new URL(origin).host !== host) foreign = true; } catch { foreign = true; } // older browsers: no Sec-Fetch-Site, but cross-origin requests carry Origin
+    if (foreign) return reply(403, { error: 'not from this site' });
+    // Only people in a room: its host (token) or someone with a pending join. Costs a scraper a room per few joins,
+    // and creating rooms is rate limited.
+    const q = new URL(req.url, 'http://localhost').searchParams;
+    const r = rooms.get(String(q.get('room') ?? '').toUpperCase());
+    if (!r || (req.headers['x-host-token'] !== r.token && !r.joins.has(q.get('join')))) return reply(403, { error: 'join a room first' });
+    try { return reply(200, await iceServers()); } catch (err) {
+      console.error('TURN credentials:', err.message);
+      return reply(200, STUN_ONLY); // no relay this time, but direct connections still work
+    }
+  }
   const [, , rawCode, sub, id, action] = parts;
 
   if (req.method === 'GET' && !rawCode) { // the lobby: open games anyone can join or watch. Never includes tokens.
@@ -238,7 +282,7 @@ http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     const parts = url.pathname.split('/').filter(Boolean);
-    const ip = clientIp(req), isApi = parts[0] === 'api' && parts[1] === 'rooms';
+    const ip = clientIp(req), isApi = parts[0] === 'api' && (parts[1] === 'rooms' || parts[1] === 'ice');
     const wait = allow(isApi ? 'api' : 'files', ip);
     if (wait) {
       res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': wait });

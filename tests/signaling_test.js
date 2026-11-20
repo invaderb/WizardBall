@@ -22,7 +22,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const hostStream = require('./host_stream');
 
 async function main() {
-  const server = spawn('node', [ROOT + 'server.js', String(PORT)], { cwd: ROOT, env: { ...process.env, NO_RATE_LIMIT: '1' } });
+  const server = spawn('node', [ROOT + 'server.js', String(PORT)], { cwd: ROOT, env: { ...process.env, NO_RATE_LIMIT: '1', CF_TURN_KEY_ID: '', CF_TURN_API_TOKEN: '' } }); // no TURN: never call Cloudflare from tests
   await new Promise((resolve) => server.stdout.on('data', (d) => d.toString().includes('http://localhost') && resolve()));
   try {
     // ---- API: a full join ----
@@ -38,6 +38,25 @@ async function main() {
     check('bad role rejected', (await call('POST', `${R.toLowerCase()}/join`, { body: 'admin' })).status === 400);
     const j1 = (await call('POST', `${R.toLowerCase()}/join`, { body: 'play' })).body.id; // lowercase code ok
     check('guest asks to join -> id', typeof j1 === 'string' && j1.length > 0);
+
+    // ---- ICE servers (TURN credentials): only for people in a room; with no TURN configured, STUN only ----
+    const iceAs = async (query, headers = {}) => (await fetch(`${BASE}/api/ice${query}`, { headers })).status;
+    const asHost = `?room=${code}`, asGuest = `?room=${code}&join=${j1}`;
+    const ice = await call('GET', `/api/ice${asGuest}`);
+    check('/api/ice for a guest with a pending join -> STUN only (no TURN configured)', ice.status === 200 && ice.body.iceServers.length === 1 && String(ice.body.iceServers[0].urls).startsWith('stun:'), JSON.stringify(ice.body));
+    check('/api/ice for the host (token) -> 200', await iceAs(asHost, { 'X-Host-Token': token }) === 200);
+    check('/api/ice with no room -> 403', await iceAs('') === 403);
+    check('/api/ice for a room but no join or token -> 403', await iceAs(asHost) === 403);
+    check('/api/ice with a wrong host token -> 403', await iceAs(asHost, { 'X-Host-Token': 'nope' }) === 403);
+    check('/api/ice with a made-up join id -> 403', await iceAs(`?room=${code}&join=nope`) === 403);
+    check('/api/ice for a room that does not exist -> 403', await iceAs(`?room=ZZZZ&join=${j1}`) === 403);
+    check('/api/ice is GET only', (await call('POST', `/api/ice${asGuest}`)).status === 405);
+    check('/api/ice from our own page -> 200', await iceAs(asGuest, { 'Sec-Fetch-Site': 'same-origin' }) === 200);
+    check('/api/ice opened in the address bar -> 200', await iceAs(asGuest, { 'Sec-Fetch-Site': 'none' }) === 200);
+    check('/api/ice from another site -> 403', await iceAs(asGuest, { 'Sec-Fetch-Site': 'cross-site', Origin: 'https://evil.example' }) === 403);
+    check('/api/ice with a foreign Origin (older browser) -> 403', await iceAs(asGuest, { Origin: 'https://evil.example' }) === 403);
+    check('/api/ice with our own Origin -> 200', await iceAs(asGuest, { Origin: BASE }) === 200);
+    check('/api/ice sends no CORS allow header', !(await fetch(`${BASE}/api/ice${asGuest}`)).headers.has('access-control-allow-origin'));
     for (let i = 0; i < 40 && !stream.joins.length; i++) await sleep(25);
     check('the request is pushed to the host straight away, with its role', stream.joins.length === 1 && stream.joins[0].id === j1 && stream.joins[0].role === 'play', JSON.stringify(stream.joins));
     check('guest sees no offer yet', (await call('GET', `${R}/joins/${j1}`)).body.offer === null);

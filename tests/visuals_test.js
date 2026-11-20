@@ -172,17 +172,27 @@ const sway = JSON.parse(run(`(() => {
 })()`));
 const crossings = sway.filter((v, i) => i && Math.sign(v) !== Math.sign(sway[i - 1])).length;
 check('a bubble sways from side to side across its path (~7px each side of its centre line), where a plain particle goes straight', crossings >= 2 && Math.max(...sway.map(Math.abs)) > 3 && Math.max(...sway.map(Math.abs)) < 15, `${crossings} crossings, max ${Math.max(...sway.map(Math.abs)).toFixed(1)}px`);
-run('for (const [id] of query("particle")) despawn(id); for (let i = 0; i < 40; i++) { tick++; goalSparkSystem(); } emit(0, 0, 0, 0, "#fff", 1)');
+// Particles are cosmetic: none go over the wire. The guest makes its own from the state it gets.
 const bsnap = JSON.parse(run('JSON.stringify(snapshot())'));
-g.run(`applySnapshot(${JSON.stringify({ ...bsnap, seq: 1e6 })})`);
-const guestParts = JSON.parse(g.run('JSON.stringify([...query("particle")].map(e => e[1].r))'));
-check('watchers get each bubble\'s size (a plain particle is 0), so they draw rings too', guestParts.filter((r) => r > 0).length === goalParts.length && guestParts.includes(0), JSON.stringify(guestParts.slice(0, 5)));
+check('a snapshot carries no particles', !('particles' in bsnap) && !('fx' in bsnap) && !JSON.stringify(bsnap).includes('particle'));
+g.run(`net.mode = "guest"; applySnapshot(${JSON.stringify({ ...bsnap, seq: 1e6, round: { t: 0, hit: 0, beam: null, winner: null } })})`);
+g.run('for (const [id] of query("particle")) despawn(id); for (const [, gl] of query("goal")) gl.sparks = "top"; for (let i = 0; i < 40; i++) guestFxStep()');
+const guestParts = JSON.parse(g.run('JSON.stringify([...query("particle")].map(e => [e[0], e[1].r]))'));
+check("a guest's goals shed their own bubbles (rings with a size)", guestParts.filter(([, r]) => r > 0).length >= 10, String(guestParts.length));
+check("...numbered below zero, so they can't collide with the host's ids", guestParts.every(([id]) => id < 0));
 threw = null;
 try { g.run('renderSystem()'); } catch (e) { threw = e.message; }
 check('...and render them', threw === null, threw ?? '');
-
-run('for (let i = 0; i < 400; i++) emit(i, 0, 0, 0, "#fff", 1)');
-check('particle cap is 400 per snapshot', JSON.parse(run('JSON.stringify(snapshot())')).particles.length === 400);
+const withP = (vals) => JSON.stringify({ ...bsnap, seq: vals.seq, round: { t: 0, hit: 0, beam: null, winner: null }, players: bsnap.players.map((p, i) => (i ? p : Object.assign([...p], vals))) });
+g.run('for (const [id] of query("particle")) despawn(id)');
+g.run(`applySnapshot(${withP({ seq: 2e6, 7: 0, 9: 0, 11: 300 })}); for (let i = 0; i < 8; i++) guestFxStep()`); // running fast on the ground
+const trail = g.run(`[...query("particle","look")].filter(e => e[2].color === components.look.get(${bsnap.players[0][0]}).color).length`);
+check('a guest draws the trail behind a fast player (from the vx the host sends)', trail >= 2, String(trail));
+g.run('for (const [id] of query("particle")) despawn(id)');
+g.run(`applySnapshot(${withP({ seq: 3e6, 7: 1, 9: -600, 11: 0 })})`); // ...then up off the ground
+check('a guest puffs dust when a player jumps off the ground', g.run('components.particle.size') === 14, String(g.run('components.particle.size')));
+g.run(`applySnapshot(${withP({ seq: 4e6, 7: 1, 9: -600, 11: 0 })})`); // still in the air: no second puff
+check('...once, not every snapshot in the air', g.run('components.particle.size') === 14);
 
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');
 process.exit(failed ? 1 : 0);

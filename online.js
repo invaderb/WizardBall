@@ -42,18 +42,14 @@ const r1 = (v) => Math.round(v * 10) / 10;
 const r2 = (v) => Math.round(v * 100) / 100;
 
 function snapshot() {
-  const players = [], ball = [], bubbles = [], particles = [];
+  const players = [], ball = [], bubbles = [];
   for (const [id, pos, spin, lives, anim] of query('pos', 'spin', 'lives', 'anim'))
-    players.push([id, r1(pos.x), r1(pos.y), r2(spin.a), lives.n, anim.facing, anim.moving ? 1 : 0, anim.air ? 1 : 0, r2(anim.phase), Math.round(anim.vy), anim.slide ? 1 : 0]);
+    players.push([id, r1(pos.x), r1(pos.y), r2(spin.a), lives.n, anim.facing, anim.moving ? 1 : 0, anim.air ? 1 : 0, r2(anim.phase), Math.round(anim.vy), anim.slide ? 1 : 0, Math.round(components.vel.get(id).x)]);
   for (const [id, pos] of query('pos', 'vel', 'circle')) ball.push([id, r1(pos.x), r1(pos.y)]); // bubbles have no vel
   for (const [id, pos, c, bubble, look] of query('pos', 'circle', 'bubble', 'look')) // components.bubble doesn't exist until the first air jump
     bubbles.push([id, r1(pos.x), r1(pos.y), c.r, look.color, r2(bubble.t / bubble.max)]); // how faded it is, 1 -> 0
-  for (const [id, pos, p, look] of query('pos', 'particle', 'look')) {
-    if (particles.length >= 400) break; // shortcut: cap keeps a packet under ~16KB (two slow-mo zones + goal bubbles run ~300); simulate particles on the guest instead if it ever matters
-    particles.push([id, Math.round(pos.x), Math.round(pos.y), r2(p.life), p.max, look.color, r1(p.r ?? 0)]); // r: a goal bubble's size (0 = a plain square)
-  }
   const { t, hit, beam, winner } = round;
-  return { t: 'snap', seq: ++seq, sfx, players, ball, bubbles, particles, round: { t: r2(t), hit: r2(hit), beam, winner } };
+  return { t: 'snap', seq: ++seq, sfx, players, ball, bubbles, round: { t: r2(t), hit: r2(hit), beam, winner } }; // no particles: guests make their own (guestFxStep)
 }
 
 // ---------- Guest: apply a description ----------
@@ -76,15 +72,16 @@ function syncSet(rows, marker, build) {
 function applySnapshot(m) {
   if (m.seq <= lastSeq) return; // older than what we already show: ignore
   lastSeq = m.seq;
-  for (const [id, x, y, a, n, facing, moving, air, phase, vy, slide] of m.players) {
+  for (const [id, x, y, a, n, facing, moving, air, phase, vy, slide, vx] of m.players) {
+    if (air && !components.anim.get(id).air && vy < -JUMP_SPEED / 2) jumpBurst({ x, y }, components.box.get(id)); // just left the ground going up: a ground jump
     Object.assign(components.pos.get(id), { x, y });
+    components.vel.get(id).x = Number(vx) || 0; // for the trail (playerFxSystem)
     components.spin.get(id).a = a;
     components.lives.get(id).n = n;
     Object.assign(components.anim.get(id), { facing, moving: Boolean(moving), air: Boolean(air), phase, vy, slide: Boolean(slide) }); // the sprite's pose
   }
   for (const [id, x, y] of m.ball) Object.assign(components.pos.get(id), { x, y });
   syncSet(m.bubbles, 'bubble', ([, x, y, r, color, fade]) => ({ pos: { x, y }, circle: { r }, bubble: { solid: false, t: fade, max: 1 }, look: { color } })); // solidity only matters on the host
-  syncSet(m.particles, 'particle', ([, x, y, life, max, color, r]) => ({ pos: { x, y }, particle: { life, max, r }, look: { color } })); // the host moves them (sway included); we just draw
   Object.assign(round, m.round);
   for (const name of m.sfx ?? []) if (Object.hasOwn(SOUNDS, name) || Object.hasOwn(TONES, name)) playSound(name); // only names we know: it's the host's data
 }
@@ -123,11 +120,20 @@ const hostHeaders = (r) => ({ 'X-Host-Token': r.token });
 const isOpen = (p) => p.link.channel?.readyState === 'open';
 const watcherCount = (r) => r.peers.filter((p) => p.role === 'watch' && isOpen(p)).length;
 
-// Every frame: describe the world to everyone connected (even before a player joins, so watchers see the arena).
+// Describe the world to everyone connected (even before a player joins, so watchers see the arena), at most 60 times a
+// second: a 120/144Hz screen would otherwise send twice the data (and twice the relay traffic) for no visible gain.
+const SNAP_MS = 1000 / 60;
+let nextSnap = 0;
+const pendingSfx = []; // sounds from frames that sent no snapshot: they go with the next one
 function hostTick() {
   const open = room?.peers.filter(isOpen) ?? [];
   if (!open.length) return;
+  pendingSfx.push(...sfx);
+  const now = performance.now();
+  if (now < nextSnap - 2) return; // (2ms slack: a 60Hz screen's frames jitter around 16.7ms)
+  nextSnap = Math.max(nextSnap, now - SNAP_MS) + SNAP_MS; // catch up at most one snapshot after a stall
   const snap = snapshot();
+  snap.sfx = pendingSfx.splice(0);
   for (const p of open) p.link.sendState(snap);
 }
 
@@ -180,6 +186,9 @@ async function listenForJoins(r) {
 }
 
 async function acceptJoin(r, j) {
+  // (before the slot checks: they and the push below run together, so two joins can't both take a slot)
+  const ice = await fetchIce(`/api/ice?room=${r.code}`, hostHeaders(r));
+  if (room !== r) return;
   const base = `/api/rooms/${r.code}/joins/${j.id}`;
   const reject = (why) => fetch(`${base}/reject`, { method: 'POST', headers: hostHeaders(r), body: why });
   if (j.role === 'play' && r.peers.some((p) => p.role === 'play'))
@@ -187,7 +196,7 @@ async function acceptJoin(r, j) {
   if (j.role === 'watch' && r.peers.filter((p) => p.role === 'watch').length >= MAX_WATCHERS)
     return reject('That game has too many watchers.');
 
-  const peer = { role: j.role, link: createLink() };
+  const peer = { role: j.role, link: createLink(ice) };
   r.peers.push(peer); // claims the slot right away, so two people can't both become the player
   peer.link.onopen = () => peerOpened(r, peer);
   peer.link.onclose = () => peerClosed(r, peer);
@@ -283,6 +292,7 @@ async function joinGame(role, codeArg) { // codeArg: from a row in the open-game
     const res = await fetch(`${base}/join`, { method: 'POST', body: role });
     const joined = await res.json();
     if (!res.ok) return say(joined.error);
+    const iceReady = fetchIce(`/api/ice?room=${encodeURIComponent(code)}&join=${encodeURIComponent(joined.id)}`); // while we wait for the host
     let offer = null;
     for (let i = 0; i < 40 && attempt === mine; i++) { // wait for the host to make us an offer
       const r = await (await fetch(`${base}/joins/${joined.id}`)).json();
@@ -291,8 +301,10 @@ async function joinGame(role, codeArg) { // codeArg: from a row in the open-game
       await sleep(500);
     }
     if (!offer) return attempt === mine ? say("The host didn't respond. Is their game still open?") : undefined;
+    const ice = await iceReady;
+    if (attempt !== mine) return;
     joinRole = role;
-    newGuestLink();
+    newGuestLink(ice);
     const answer = await link.join(offer);
     const reply = await fetch(`${base}/joins/${joined.id}/answer`, { method: 'POST', body: answer });
     if (!reply.ok) return say((await reply.json()).error);
@@ -300,8 +312,8 @@ async function joinGame(role, codeArg) { // codeArg: from a row in the open-game
   } catch (err) { say(describe(err)); }
 }
 
-function newGuestLink() {
-  link = createLink();
+function newGuestLink(ice) {
+  link = createLink(ice);
   link.onopen = guestConnected;
   link.onclose = disconnected;
   link.onmessage = onGuestMessage;

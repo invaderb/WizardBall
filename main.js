@@ -279,20 +279,7 @@ function controlSystem() {
 				else [vel.x, vel.y] = [(dx * JUMP_SPEED) / Math.hypot(dx, dy), (dy * JUMP_SPEED) / Math.hypot(dx, dy)];
 				body.aim = dx === 0 ? 0 : AIM_LOCK; // straight up / down: nothing sideways to carry
 				continue;
-			} else
-				for (
-					let i = 0;
-					i < 14;
-					i++ // ground launch burst
-				)
-					emit(
-						pos.x + box.w / 2,
-						pos.y + box.h,
-						(Math.random() - 0.5) * 400,
-						-Math.random() * 250,
-						"#fff",
-						0.5,
-					);
+			} else jumpBurst(pos, box);
 			vel.y = -JUMP_SPEED; // a ground jump: always up. ponytail: unlimited air jumps, like the original; add a limit if it feels broken
 		}
 	}
@@ -703,8 +690,11 @@ function ballSystem() {
 }
 
 // A particle is just an entity: position, velocity, a color, and a countdown to deletion.
+// Particles are cosmetic, so they never go over the network: an online guest makes its own (guestFxStep).
+let fxId = -1; // guests number their particles below zero so they never collide with the host's ids
+const spawnFx = (parts) => (net.mode === "guest" ? spawnAs(fxId--, parts) : spawn(parts));
 function emit(x, y, vx, vy, color, life, g = 600) {
-	spawn({
+	spawnFx({
 		pos: { x, y },
 		vel: { x: vx, y: vy },
 		particle: { life, max: life, g },
@@ -716,7 +706,7 @@ function emit(x, y, vx, vy, color, life, g = 600) {
 // `wave` = the sideways direction (unit vector) and where in the sway it starts.
 function emitBubble(x, y, vx, vy, color, life, g, r) {
 	const speed = Math.hypot(vx, vy) || 1;
-	spawn({
+	spawnFx({
 		pos: { x, y },
 		vel: { x: vx, y: vy },
 		particle: { life, max: life, g, r, wave: { x: -vy / speed, y: vx / speed, phase: Math.random() * Math.PI * 2 } },
@@ -741,7 +731,13 @@ function particleSystem() {
 	}
 }
 
-// Player visuals: trail while moving, somersault while airborne.
+// The puff of dust under a ground jump.
+function jumpBurst(pos, box) {
+	for (let i = 0; i < 14; i++)
+		emit(pos.x + box.w / 2, pos.y + box.h, (Math.random() - 0.5) * 400, -Math.random() * 250, "#fff", 0.5);
+}
+
+// Player visuals: somersault while airborne, sprite pose, and (playerFxSystem) particles.
 let tick = 0;
 function effectsSystem() {
 	tick++;
@@ -752,16 +748,6 @@ function effectsSystem() {
 		"body",
 		"look",
 	)) {
-		if (tick % 4 === 0 && Math.abs(vel.x) > 100)
-			// every 4th step so it's a trail, not a smear
-			emit(
-				pos.x + box.w / 2,
-				pos.y + Math.random() * box.h,
-				-vel.x * 0.1,
-				(Math.random() - 0.5) * 40,
-				look.color,
-				0.4,
-			);
 		const spin = components.spin.get(id);
 		if (body.grounded) spin.a = 0;
 		else spin.a += (vel.x < 0 ? -1 : 1) * 10 * DT; // flip in the direction you're moving
@@ -775,20 +761,44 @@ function effectsSystem() {
 		anim.air = !body.grounded;
 		anim.vy = vel.y;
 		anim.slide = body.slide > 0;
-		if (anim.slide) {
-			anim.facing = body.slideDir;
-			if (tick % 2 === 0) // dust kicked up behind the slide
-				emit(
-					pos.x + box.w / 2 - body.slideDir * 6,
-					pos.y + box.h - 2,
-					-body.slideDir * (40 + Math.random() * 80),
-					-30 - Math.random() * 70,
-					"#fff",
-					0.3 + Math.random() * 0.2,
-					400,
-				);
-		}
+		if (anim.slide) anim.facing = body.slideDir;
 	}
+	playerFxSystem();
+}
+
+// Player particles: a trail when moving fast, dust behind a slide. Reads only vel.x and the sprite pose, which an
+// online guest also gets from the host, so the guest runs this too.
+function playerFxSystem() {
+	for (const [, pos, vel, box, anim, look] of query("pos", "vel", "box", "anim", "look")) {
+		if (tick % 4 === 0 && Math.abs(vel.x) > 100)
+			// every 4th step so it's a trail, not a smear
+			emit(pos.x + box.w / 2, pos.y + Math.random() * box.h, -vel.x * 0.1, (Math.random() - 0.5) * 40, look.color, 0.4);
+		if (anim.slide && tick % 2 === 0) // dust kicked up behind the slide
+			emit(
+				pos.x + box.w / 2 - anim.facing * 6,
+				pos.y + box.h - 2,
+				-anim.facing * (40 + Math.random() * 80),
+				-30 - Math.random() * 70,
+				"#fff",
+				0.3 + Math.random() * 0.2,
+				400,
+			);
+	}
+}
+
+// Online guest, once per step: make the same kinds of particles the host would, from the state it sent (positions,
+// round, sprite poses), and move them. Mirrors the host's phases in frame(): beam while dying, the rest in play.
+function guestFxStep() {
+	if (round.hit > 0) {
+		if (round.hit > 0.4 && round.beam) beamSystem();
+	} else if (round.winner || round.t > 0) return; // countdown / game over: particles hold still, as on the host
+	else {
+		tick++;
+		slowSystem(); // its slow-mo also paces our particles, like the host's
+		playerFxSystem();
+		goalSparkSystem();
+	}
+	particleSystem();
 }
 
 // Bubbles only affect the ball (players pass through). Ball gets pushed out along the
@@ -1232,7 +1242,7 @@ let last = performance.now(),
 function frame(now) {
 	acc += Math.min((now - last) / 1000, 0.1) * clock.scale; // slow-mo = fewer physics steps per real second // clamp so a background tab doesn't spiral
 	last = now;
-	if (net.mode === "guest") acc = 0; // the guest never simulates; it only draws what the host sends
+	if (net.mode === "guest") for (; acc >= DT; acc -= DT) guestFxStep(); // the guest doesn't simulate the game, only its own particles
 	if (menu.open) {
 		acc = 0;
 		pressed.clear();

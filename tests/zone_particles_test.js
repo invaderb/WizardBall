@@ -20,8 +20,8 @@ const zones = JSON.parse(run('JSON.stringify([...query("pos","box","slow")].map(
 check('both zones produce them (split roughly evenly)', zones.every(([x, , w]) => parts.filter(([px]) => px >= x - 20 && px <= x + w + 20).length > 40));
 check('they rise through the zone (drift up, stay near it)', zones.every(([x, y, w, h]) => parts.filter(([px]) => px >= x - 20 && px <= x + w + 20).every(([, py]) => py > y - 120 && py < y + h)));
 check('lives are 1 to 1.6s and no particle outlives that', parts.every(([, , life]) => life > 0 && life <= 1.6));
-// Online: the worst case is the death beam on top of zone sparkles. The snapshot must still stay under its cap.
-run('emit(0, 0, 0, 0, "#f44", 1); for (let i = 0; i < 400; i++) emit(i, 0, 0, 0, "#fff", 1)');
-check('snapshot still capped at 400 particles', JSON.parse(run('JSON.stringify(snapshot())')).particles.length === 400);
+// Online: snapshots carry no particles (guests make their own), so they stay small with ~230 alive.
+const snapBytes = run('JSON.stringify(snapshot())').length;
+check('a snapshot with zone sparkles alive stays under one packet (~1200 bytes)', snapBytes < 1200, `${snapBytes} bytes`);
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');
 process.exit(failed ? 1 : 0);

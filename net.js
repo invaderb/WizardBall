@@ -7,14 +7,25 @@
 //   Guest: const link = createLink();  const answer = await link.join(offerFromHost); // send `answer` back
 //   Both:  link.onopen = ...; link.onmessage = (obj) => ...; link.send(obj);
 
-// STUN lets each browser learn its public address so two players behind home routers can connect.
-// Some networks (strict corporate/mobile NATs) also need a TURN relay, which we don't have.
-const ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+// STUN lets each browser learn its public address so two players behind home routers can connect directly.
+// When no direct route works (corporate firewalls, hidden .local addresses, VPNs) a TURN server relays the traffic.
+// The room server hands out TURN credentials per connection (fetchIce, server.js /api/ice); without it, STUN only.
+const STUN = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+async function fetchIce(url, headers) {
+  try {
+    const c = await (await fetch(url, { headers })).json();
+    if (Array.isArray(c?.iceServers)) return c;
+  } catch { /* no server, or it said no: direct connections still work */ }
+  return STUN;
+}
 
 // Wait until the browser has found all its network candidates, so the code we hand out is complete.
 // (The alternative, "trickle ICE", sends candidates one by one and needs a live signaling channel.)
+// Capped at 2s: where a firewall eats STUN, Chrome/Safari keep retrying for ~40s (longer than a join waits), while the
+// candidates that matter arrive in well under a second. The description holds whatever was gathered so far.
 function waitForIce(pc) {
   return new Promise((resolve) => {
+    setTimeout(resolve, 2000);
     if (pc.iceGatheringState === 'complete') resolve();
     else pc.addEventListener('icegatheringstatechange', () => pc.iceGatheringState === 'complete' && resolve());
   });
@@ -23,8 +34,8 @@ function waitForIce(pc) {
 const encode = (desc) => btoa(JSON.stringify(desc)); // description -> one pasteable line
 const decode = (code) => JSON.parse(atob(code.trim()));
 
-function createLink() {
-  const pc = new RTCPeerConnection(ICE);
+function createLink(ice = STUN) {
+  const pc = new RTCPeerConnection(ice);
   // Two channels over the one connection:
   //   channel      reliable + ordered   (TCP-like)  inputs, level, "rematch": must arrive, in order
   //   stateChannel unreliable+unordered (UDP-like)  game snapshots: a lost one is useless once a newer

@@ -88,7 +88,7 @@ const state = (w) => w.run('JSON.stringify({ p: [...query("pos","spin","lives")]
 check('player world matches host', state(host) === state(player));
 check('watcher world matches host', state(host) === state(watcher));
 const count = (w, n) => w.run(`components.${n}?.size ?? 0`);
-check('bubble + particles replicate to the watcher', count(watcher, 'bubble') === 1 && count(watcher, 'particle') === count(host, 'particle') && count(host, 'particle') > 0);
+check('the bubble replicates to the watcher; particles do not (cosmetic: guests make their own)', count(watcher, 'bubble') === 1 && count(host, 'particle') > 0 && count(watcher, 'particle') === 0);
 
 // ---- on-screen labels render without throwing ----
 let threw = null;
@@ -102,6 +102,23 @@ check('guest rejects an invalid level', watcher.run('levelReady') === false);
 const keep = state(player);
 player.run('applySnapshot({ seq: 0, players: [[...query("controls")][0][0], 1, 1, 0, 3], ball: [], bubbles: [], particles: [], round: {} })');
 check('stale snapshot (old seq) ignored', state(player) === keep);
+
+// ---- snapshots are capped at 60/s, and sounds from skipped frames still arrive ----
+{
+  let t = 1e6, heard = [];
+  host.sandbox.performance.now = () => t;
+  watcher.run('levelReady = true; globalThis.heard = []; const ap = applySnapshot; applySnapshot = (m) => { heard.push(...(m.sfx ?? [])); ap(m); }');
+  const sent0 = hostToWatcher.sent;
+  for (let i = 0; i < 144; i++) { t += 1000 / 144; host.run(`sfx.length = 0; sfx.push("s${i}"); net.tick()`); } // one second at 144Hz
+  const sent = hostToWatcher.sent - sent0;
+  check('a 144Hz host sends ~60 snapshots a second, not 144', sent >= 55 && sent <= 62, String(sent));
+  heard = JSON.parse(watcher.run('JSON.stringify(heard)'));
+  check('...and every frame\'s sound still reaches the guest', heard.length >= 140 && heard.includes('s1') && heard.includes('s142'), String(heard.length));
+  t = 2e6; const s1 = hostToWatcher.sent;
+  for (let i = 0; i < 60; i++) { t += 1000 / 60 + (i % 2 ? 1.5 : -1.5); host.run('net.tick()'); } // 60Hz with jitter
+  check('a 60Hz host still sends every frame (jitter allowed)', hostToWatcher.sent - s1 >= 58, String(hostToWatcher.sent - s1));
+  host.sandbox.performance.now = () => 0;
+}
 
 // ---- a watcher leaves: the game carries on ----
 host.run('peerClosed(room, peerW)');

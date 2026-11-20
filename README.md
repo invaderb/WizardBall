@@ -82,6 +82,7 @@ Every way of playing (one keyboard, vs the computer, online) reads its input as 
 - [x] Step 2: host runs the simulation, guest sends inputs, host sends state snapshots (`online.js`; untested over a real connection)
 - [ ] Step 3: guest smoothing (interpolate snapshots) and input prediction
 - [x] Step 4: a signaling server so players can join with a short room code instead of copy/paste (`server.js`)
+- [x] Step 5: TURN relay fallback via Cloudflare, for networks where a direct connection fails (`/api/ice` in `server.js`)
 
 - [x] Title screen (Play / Host online game / Join room / Watch)
 - [x] Spectators: anyone with the room code can Watch a game; they receive the same snapshots as the player but can't send input (up to 8)
@@ -125,3 +126,9 @@ They run the real game files headless against a stubbed browser, so they check l
 ### Running the game
 `node server.js` then open http://localhost:3000. It serves the game and the room-code API (no dependencies).
 Online play needs the page opened from that server. `net.html` is the manual copy/paste version, which still works without one.
+
+**TURN relay (so online play works on any network).** Browsers try to connect directly first. When they can't (corporate firewalls, browsers hiding local addresses, VPNs, routers that won't loop traffic back in), they relay through a TURN server. Set these two environment variables on the server, from Cloudflare Dashboard → Realtime → TURN Server → create a key:
+
+    CF_TURN_KEY_ID=...  CF_TURN_API_TOKEN=...  node server.js
+
+The token stays on the server; each connection gets its own 4-hour credential from `/api/ice`, which only answers a room's host or someone with a pending join (and only from this site). Without the variables, players get STUN only (direct connections only).
