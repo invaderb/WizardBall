@@ -38,6 +38,8 @@ check('draws every pose (both facings, run phases, rising/falling) without throw
 const calls = draw(idle);
 const count = (name, cs = calls) => cs.filter((c) => c[0] === name).length;
 check('save/restore are balanced (the sprite never leaks canvas state into the rest of the scene)', count('save') === 1 && count('restore') === 1);
+const setTo = (prop, cs = calls) => cs.filter((c) => c[0] === 'set' && c[1] === prop).map((c) => c[2]);
+check("glows in the player's color, inside the save/restore (so it ends with the sprite)", setTo('shadowColor').includes('#48f') && setTo('shadowBlur')[0] === run('WIZARD_GLOW') && calls.findIndex((c) => c[1] === 'shadowBlur') > calls.findIndex((c) => c[0] === 'save'), JSON.stringify(setTo('shadowColor')));
 check('every wizard is outlined in white, whatever its player color', OUTLINE === '#fff' && calls.some((c) => c[0] === 'set' && c[1] === 'strokeStyle' && c[2] === '#fff') && !calls.some((c) => c[0] === 'set' && c[1] === 'strokeStyle' && c[2] === '#48f') && count('stroke') >= 7);
 
 // bigger, black-filled, no staff

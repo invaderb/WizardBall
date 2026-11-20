@@ -114,5 +114,31 @@ function cornerFuzz(run, seed, trials) {
   check('fuzz: 24 players x 700 steps of random running and jumping around the whole Simple arena: none glitches', bad === 0, bad ? `${bad} failed; first: ${first}` : '');
 }
 
+// ===================== jump cooldown: air jumps only =====================
+{
+  const run = makeWorld(PIPES_ARENA);
+  const bubbles = () => run('components.bubble?.size ?? 0');
+  run('put(900, 400, 0, 0); P[4].grounded = false;'); // mid-air, open space
+  run('step(0, true)');
+  check('an air jump places a bubble', bubbles() === 1);
+  run('step(0, false); step(0, true)'); // mashing jump: the next press 2 steps later
+  check('a second air jump right away is dropped (cooldown)', bubbles() === 1);
+  const steps = Math.ceil(run('JUMP_COOLDOWN') / run('DT'));
+  run(`for (let i = 0; i < ${steps}; i++) step(0, false); P[4].grounded = false; step(0, true)`);
+  check(`...and works again after JUMP_COOLDOWN (${run('JUMP_COOLDOWN')}s)`, bubbles() === 2);
+  run('put(900, 400, 0, 0); P[4].grounded = true; P[4].jumpCool = 9; step(0, true)');
+  check('a ground jump ignores the cooldown (always instant)', run('P[3].y') < -500, `vy=${run('P[3].y')}`);
+  // ball in slow-mo: 0.1s shorter (step() doesn't run slowSystem, so clock.scale stays where we put it)
+  const slowSteps = Math.ceil(run('SLOW_JUMP_COOLDOWN') / run('DT'));
+  check('the slow-mo cooldown is 0.1s shorter', Math.abs(run('JUMP_COOLDOWN - SLOW_JUMP_COOLDOWN') - 0.1) < 1e-9);
+  run('clock.scale = 0.35; put(900, 400, 0, 0); P[4].grounded = false; P[4].jumpCool = 0; step(0, true)');
+  const before = bubbles();
+  run(`for (let i = 0; i < ${slowSteps}; i++) step(0, false); P[4].grounded = false; step(0, true)`);
+  check('with the ball in slow-mo, the next air jump comes after the shorter cooldown', bubbles() === before + 1, `${before} -> ${bubbles()}`);
+  run('clock.scale = 1; P[4].jumpCool = 0; P[4].grounded = false; step(0, true)');
+  run(`for (let i = 0; i < ${slowSteps}; i++) step(0, false); P[4].grounded = false; step(0, true)`);
+  check('...which at normal speed is still too soon', bubbles() === before + 2, `${bubbles()}`);
+}
+
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');
 process.exit(failed ? 1 : 0);

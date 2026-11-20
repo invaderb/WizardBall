@@ -79,6 +79,10 @@
     /* Hosting + open games */
     .host { display: grid; gap: 6px; }
     .check { display: flex; gap: 8px; align-items: center; font-size: 18px; color: #aaa; cursor: pointer; }
+    .sound-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-bottom: 6px; }
+    .sound-row .check { min-width: 170px; }
+    .sound-row input[type="range"] { flex: 1; min-width: 140px; accent-color: #fff; cursor: pointer; }
+    .sound-row input[type="range"]:disabled { opacity: 0.35; cursor: default; }
     #lobby { width: min(560px, 92vw); }
     #lobby h2 { margin: 0 0 6px; font-weight: 400; font-size: 24px; display: flex; align-items: center; gap: 12px; }
     #games { display: grid; gap: 6px; }
@@ -170,8 +174,14 @@
         </div>
         <div id="level-msg" aria-live="polite"></div>
       </div>
-      <label class="check"><input type="checkbox" id="music-cb" checked> Music</label>
-      <label class="check"><input type="checkbox" id="sfx-cb" checked> Sound effects</label>
+      <div class="sound-row">
+        <label class="check"><input type="checkbox" id="music-cb" checked> Music</label>
+        <input type="range" id="music-vol" min="0" max="100" step="5" value="100" aria-label="Music volume">
+      </div>
+      <div class="sound-row">
+        <label class="check"><input type="checkbox" id="sfx-cb" checked> Sound effects</label>
+        <input type="range" id="sfx-vol" min="0" max="100" step="5" value="100" aria-label="Sound effects volume">
+      </div>
       <button type="button" id="options-close" class="small">Close</button>
     </dialog>
     <p class="hint">Blue: W A S D, Space &middot; Red: arrows, Enter &middot; Controllers: stick, A, Start &middot; Air jumps go the way you point &middot; Esc: back to this menu</p>

@@ -12,6 +12,8 @@
 
 // Outline color for every wizard. Set to null to outline each one in its player's color instead.
 const WIZARD_OUTLINE = '#fff';
+// A soft glow in the player's color around each wizard (px of blur), so two tangled up in the air are easy to tell apart. 0 = none.
+const WIZARD_GLOW = 12;
 // Dying wizards are outlined in red, whatever their player color.
 const DEATH_OUTLINE = '#f33';
 const PLAYER = { w: 35, h: 53 }; // every player's hitbox (was 32 x 48, now ~10% bigger)
@@ -42,6 +44,7 @@ function drawWizard(ctx, color, pose, time = 0) {
   ctx.strokeStyle = ctx.fillStyle = line;
   ctx.lineWidth = 2.5;
   ctx.lineCap = ctx.lineJoin = 'round';
+  if (WIZARD_GLOW) { ctx.shadowColor = color; ctx.shadowBlur = WIZARD_GLOW; } // (unscaled: shadows ignore the transform; the restore below ends it)
   const solid = () => { ctx.fillStyle = '#000'; ctx.fill(); ctx.fillStyle = line; ctx.stroke(); }; // black fill, outlined
   const circle = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); solid(); };
   const foot = (x, y) => { ctx.beginPath(); ctx.moveTo(x - 2.5, y); ctx.lineTo(x + 2.5, y); ctx.stroke(); };

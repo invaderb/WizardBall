@@ -168,13 +168,23 @@ refreshGames();
   setTimeout(pollGames, 3000);
 })();
 
-// Options: music and sound effects on / off, remembered in this browser.
+// Options: music and sound effects on / off, and their volumes, remembered in this browser.
 for (const key of ['music', 'sfx']) {
-  const cb = $(`${key}-cb`);
+  const cb = $(`${key}-cb`), vol = $(`${key}-vol`);
   soundOn[key] = cb.checked = localStorage.getItem(`wizardball-${key}`) !== 'off';
+  const saved = Number(localStorage.getItem(`wizardball-${key}-vol`) ?? 100);
+  vol.value = Number.isFinite(saved) ? Math.max(0, Math.min(100, saved)) : 100;
+  vol.disabled = !cb.checked; // (a slider for a muted sound does nothing: grey it out)
+  setVolume(key, vol.value / 100);
   cb.onchange = () => {
     soundOn[key] = cb.checked;
+    vol.disabled = !cb.checked;
     localStorage.setItem(`wizardball-${key}`, cb.checked ? 'on' : 'off');
     musicSystem(); // stop / start the title music now
   };
+  vol.oninput = () => { // live, while dragging
+    setVolume(key, vol.value / 100);
+    localStorage.setItem(`wizardball-${key}-vol`, vol.value);
+  };
+  if (key === 'sfx') vol.onchange = () => playSound('jump'); // let go: a sample at the new volume
 }

@@ -13,7 +13,12 @@ const SLIDE_SPEED = 900; // at the start of a slide
 const SLIDE_TIME = 0.4; // seconds
 const DOUBLE_TAP = 0.25; // seconds between the two presses
 const SLIDE_COOLDOWN = 0.3; // seconds after one ends before the next can start (no chaining them across the arena)
-const NO_SLIDE = { slide: 0, slideDir: 1, slideCool: 0, held: 0, tapDir: 0, tapAge: 9, aim: 0 }; // a player's slide (and aimed-jump) state at spawn / reset
+const NO_SLIDE = { slide: 0, slideDir: 1, slideCool: 0, held: 0, tapDir: 0, tapAge: 9, aim: 0, jumpCool: 0 }; // a player's slide (and jump) state at spawn / reset
+// Seconds after an air jump before the next one: fast play, but no spamming bubbles. Ground jumps are always instant.
+// Try others from the address bar: ?jumpcool=0.3
+const JUMP_COOLDOWN = Number(globalThis.location ? new URLSearchParams(location.search).get("jumpcool") ?? 0.18 : 0.18);
+// While the ball is in slow-mo the cooldown is 0.1s shorter, so players can still get to a slowed ball in time.
+const SLOW_JUMP_COOLDOWN = Math.max(0, JUMP_COOLDOWN - 0.1);
 // Aimed air jumps: the stick's direction (8 ways; none = up) launches you that way at JUMP_SPEED. Two feel settings,
 // picked by playing (the defaults); still settable from the address bar to try others (?aimlock=0.1&sidelift=225):
 //   aimlock:  seconds the launch carries you before the stick steers again. 0 = steer at once (only up / down change);
@@ -95,6 +100,15 @@ if (audio) {
 }
 const TONES = { beep: [660, 0.12], go: [1320, 0.3] }; // the countdown's blips, made here (no file): [Hz, seconds]
 const soundOn = { music: true, sfx: true }; // the Options checkboxes (title.js)
+// The Options volume sliders (title.js): every sound effect goes through sfxBus; the music through its own gain below.
+const sfxBus = audio?.createGain();
+sfxBus?.connect(audio.destination);
+let musicGain = null;
+const MUSIC_LEVEL = 0.5; // the music's volume at full slider (it's mixed under the effects)
+function setVolume(key, v) { // v: 0..1
+	if (key === "sfx" && sfxBus) sfxBus.gain.value = v;
+	if (key === "music" && musicGain) musicGain.gain.value = MUSIC_LEVEL * v;
+}
 const sfx = []; // sounds played this frame: the host sends them to online guests, who don't simulate
 function playSound(name) {
 	sfx.push(name); // sent to guests even if muted here: they have their own setting
@@ -106,7 +120,7 @@ function playSound(name) {
 		osc.frequency.value = hz;
 		gain.gain.setValueAtTime(0.12, t);
 		gain.gain.exponentialRampToValueAtTime(0.001, t + len); // a quick fade, so it doesn't click off
-		osc.connect(gain).connect(audio.destination);
+		osc.connect(gain).connect(sfxBus);
 		osc.start(t);
 		osc.stop(t + len);
 		return;
@@ -118,7 +132,7 @@ function playSound(name) {
 		src.playbackRate.value = SOUND_RATE[file] ?? 1;
 		const gain = audio.createGain();
 		gain.gain.value = SOUND_VOLUME[file] ?? 1;
-		src.connect(gain).connect(audio.destination);
+		src.connect(gain).connect(sfxBus);
 		src.start(audio.currentTime + (SOUND_DELAY[file] ?? 0));
 	}
 }
@@ -142,9 +156,9 @@ function wantedTrack() {
 }
 const music = typeof Audio === "undefined" ? null : Object.assign(new Audio(), { loop: true });
 if (music && audio) {
-	const gain = audio.createGain();
-	gain.gain.value = 0.5;
-	audio.createMediaElementSource(music).connect(gain).connect(audio.destination);
+	musicGain = audio.createGain();
+	musicGain.gain.value = MUSIC_LEVEL;
+	audio.createMediaElementSource(music).connect(musicGain).connect(audio.destination);
 }
 let musicTrack = null;
 function musicSystem() {
@@ -268,9 +282,11 @@ function controlSystem() {
 			else vel.x = held * RUN_SPEED;
 		}
 
-		if (input.jump) {
+		body.jumpCool -= DT;
+		if (input.jump && (body.grounded || body.jumpCool <= 0)) { // (an air jump pressed during the cooldown is just dropped)
 			playSound("jump");
 			if (!body.grounded) {
+				body.jumpCool = clock.scale < 1 ? SLOW_JUMP_COOLDOWN : JUMP_COOLDOWN; // (clock.scale < 1: the ball is in a slow-mo zone)
 				placeBubble(body, pos, box, look.color); // air jump = bubble
 				// ...launched the way the stick points (the AI too: see aiThink).
 				const dx = held, dy = input.down - input.up;

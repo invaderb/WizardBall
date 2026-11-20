@@ -74,6 +74,7 @@ const vyBefore = run(`${blue}[1].y`);
 fingers('touchstart', thumb(200, 300)); fingers('touchmove', thumb(200, 380), jumpFinger); stepN(1);
 check('in the air, stick down + jump: an air jump that dives (moving down fast)', vyBefore < 0 && run(`${blue}[1].y`) > 500, `vy before ${vyBefore}, after ${run(`${blue}[1].y`)}`);
 fingers('touchend');
+stepN(Math.ceil(run('JUMP_COOLDOWN / DT'))); // (past the last air jump's cooldown)
 run('sfx.length = 0'); fingers('touchstart', jumpFinger); stepN(1); fingers('touchend');
 check('a jump plays the jump sound', run('sfx.join()') === 'jump', run('sfx.join()'));
 run('ai.slot = 1; ai.skill = "hard"; aiReset()'); // vs the computer, as the title button starts it: the human is blue (slot 0), red is the AI
